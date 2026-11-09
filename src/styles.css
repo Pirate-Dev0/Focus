@@ -813,3 +813,74 @@ button:disabled { cursor: default; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* ---------- Habitudes (Life) ---------- */
+.hb-head { padding: 18px 18px 16px; border-radius: 22px; box-shadow: var(--shadow); margin-bottom: 10px; }
+.hb-title { font-size: 24px; font-weight: 700; letter-spacing: -0.035em; line-height: 1.15; }
+.hb-sub { color: var(--text-2); font-size: 13.5px; margin-top: 3px; }
+.hb-stats { display: flex; gap: 28px; margin-top: 14px; }
+.hb-num { font-size: 27px; font-weight: 700; letter-spacing: -0.04em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.hb-den { font-size: 15px; font-weight: 600; opacity: .55; letter-spacing: -0.02em; }
+.hb-lbl { font-size: 11.5px; color: var(--text-2); margin-top: 3px; font-weight: 500; }
+
+.hb-new { display: flex; align-items: center; gap: 12px; width: 100%; padding: 15px 16px; border-radius: 20px; font-weight: 600; font-size: 15.5px; letter-spacing: -0.015em; box-shadow: var(--shadow); margin-bottom: 12px; text-align: left; transition: transform .12s var(--ease), background .15s; }
+.hb-new:active { transform: scale(.985); background: var(--hover); }
+.hb-new-ic { width: 25px; height: 25px; border-radius: 50%; background: #3b82f6; color: #fff; display: grid; place-items: center; box-shadow: 0 3px 10px rgba(59, 130, 246, .35); flex-shrink: 0; }
+
+.hb-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+@media (min-width: 900px) { .hb-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.hb-card { --c: #3b82f6; background: var(--bg-elev); border: 1px solid var(--border); border-radius: 24px; padding: 14px; box-shadow: var(--shadow); }
+.hb-main { display: flex; gap: 14px; align-items: stretch; }
+
+/* grille d'historique : 7 colonnes (L→D) × 7 semaines */
+.hm { flex: 0 0 46%; max-width: 184px; align-self: center; padding: 9px; border-radius: 16px; background: var(--bg-sunk); border: 1px solid var(--border); display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+.hm-cell { aspect-ratio: 1; border-radius: 4px; background: var(--track); transition: transform .1s var(--ease), background .2s; }
+.hm-cell:active { transform: scale(.8); }
+.hm-cell.off { background: color-mix(in srgb, var(--track) 40%, transparent); }
+.hm-cell.future { background: transparent; box-shadow: inset 0 0 0 1px var(--border); cursor: default; }
+.hm-cell.done { background: color-mix(in srgb, var(--c) var(--i, 100%), var(--track)); }
+.hm-cell.partial { background: color-mix(in srgb, var(--c) 32%, var(--track)); }
+.hm-cell.frozen { background: color-mix(in srgb, #38bdf8 45%, var(--track)); }
+.hm-cell.today { outline: 1.5px solid color-mix(in srgb, var(--c) 80%, transparent); outline-offset: 1px; }
+.hm-cell.today.done { animation: hm-pop .4s var(--ease); }
+@keyframes hm-pop { 0% { transform: scale(.5); } 60% { transform: scale(1.2); } 100% { transform: scale(1); } }
+
+.hb-side { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+.hb-name { display: flex; align-items: center; gap: 6px; max-width: 100%; font-weight: 650; font-size: 15.5px; letter-spacing: -0.02em; text-align: right; margin-top: 2px; }
+.hb-name .em { font-size: 17px; flex-shrink: 0; }
+.hb-meta { display: flex; gap: 8px; font-size: 11.5px; color: var(--text-3); margin-top: -7px; white-space: nowrap; }
+.hb-icons { display: flex; gap: 8px; }
+.hb-ic { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--c) 14%, transparent); color: var(--c); transition: transform .1s var(--ease), background .15s, color .15s; }
+.hb-ic.on { background: var(--c); color: #fff; }
+.hb-ic.del { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
+.hb-ic:active { transform: scale(.88); }
+.hb-days { display: flex; gap: 3px; }
+.hb-day { width: 19px; height: 19px; border-radius: 50%; display: grid; place-items: center; font-size: 9px; font-weight: 700; color: var(--text-3); }
+.hb-day.on { background: var(--c); color: #fff; }
+.hb-day.today { box-shadow: 0 0 0 1.5px var(--bg-elev), 0 0 0 2.75px color-mix(in srgb, var(--c) 70%, transparent); }
+
+.hb-actions { display: flex; gap: 8px; width: 100%; margin-top: auto; }
+.hb-check { flex: 1; min-width: 0; height: 44px; border-radius: 999px; background: var(--c); color: #fff; font-weight: 650; font-size: 15px; letter-spacing: -0.01em; position: relative; overflow: hidden; white-space: nowrap; box-shadow: 0 6px 18px color-mix(in srgb, var(--c) 38%, transparent); transition: transform .12s var(--ease), background .25s, color .25s, box-shadow .25s; }
+.hb-check::before { content: ''; position: absolute; inset: 0 auto 0 0; width: var(--p, 0%); background: rgba(255, 255, 255, .24); transition: width .35s var(--ease); }
+.hb-check-in { position: relative; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 0 10px; }
+.hb-check:active { transform: scale(.96); }
+.hb-check.done, .hb-check.soft { background: color-mix(in srgb, var(--c) 15%, transparent); color: var(--c); box-shadow: none; }
+.hb-check-sub { font-size: 12px; font-weight: 600; opacity: .8; margin-left: 4px; }
+.hb-minus { width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0; display: grid; place-items: center; background: color-mix(in srgb, var(--c) 15%, transparent); color: var(--c); transition: transform .1s var(--ease); }
+.hb-minus:active { transform: scale(.9); }
+
+.hb-statrow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); text-align: center; }
+.hb-statrow b { display: block; font-size: 17px; font-weight: 700; color: var(--c); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.hb-statrow span { font-size: 11px; color: var(--text-3); font-weight: 500; }
+
+.hb-swatch { width: 30px; height: 30px; border-radius: 50%; background: var(--c); transition: transform .1s var(--ease), box-shadow .15s; }
+.hb-swatch.on { box-shadow: 0 0 0 2.5px var(--bg-elev), 0 0 0 4.5px var(--c); }
+.hb-swatch:active { transform: scale(.9); }
+
+@media (max-width: 380px) {
+  .hb-card { padding: 12px; }
+  .hb-main { gap: 11px; }
+  .hb-day { width: 17px; height: 17px; font-size: 8.5px; }
+  .hb-check { font-size: 14px; }
+}

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Bell, Clock, Flame, Moon, Plus, Snowflake, Sparkles, Sun, Sunset, Trash2 } from 'lucide-react';
+import { useEffect, useState, type CSSProperties } from 'react';
+import { BarChart3, Bell, Check, ChevronRight, Clock, Flame, Minus, Plus, Snowflake, Sparkles, Trash2 } from 'lucide-react';
 import { update, useAppState } from '../store';
 import { go } from '../router';
 import { Field, Segmented, Sheet, Empty, toast } from '../components/ui';
@@ -32,116 +32,267 @@ export default function Life({ tab }: { tab?: string }) {
   );
 }
 
+const HABIT_COLORS = ['#3b82f6', '#c026d3', '#14b8a6', '#f97316', '#ec4899', '#22c55e', '#6366f1', '#ef4444'];
+const WEEKS = 7; // lignes de la grille d'historique
+const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0]; // lundi → dimanche
+
+const fmtNum = (n: number) => n.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+
 function Habits() {
   const s = useAppState();
-  const [weekOffset, setWeekOffset] = useState(0);
   const [edit, setEdit] = useState<Habit | 'new' | null>(null);
   const t = today();
-  // semaine du lundi au dimanche
-  const base = addDays(t, weekOffset * 7);
-  const dow = (parseDate(base).getDay() + 6) % 7;
-  const monday = addDays(base, -dow);
-  const days = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
   const habits = s.habits.filter((h) => !h.archived);
 
-  const toggle = (h: Habit, date: string) => {
-    haptic();
-    setHabitProgress(h.id, date, 'toggle');
-  };
+  // chaque habitude garde sa couleur (synchronisée), même si l'ordre change
+  useEffect(() => {
+    if (!s.habits.some((h) => !h.color)) return;
+    update((d) => {
+      d.habits.forEach((h, i) => { if (!h.color) h.color = HABIT_COLORS[i % HABIT_COLORS.length]; });
+    });
+  }, [s.habits]);
 
-  // taux de la semaine
+  const dow = (parseDate(t).getDay() + 6) % 7;
+  const week = Array.from({ length: 7 }, (_, i) => addDays(t, i - dow));
+  const dueToday = habits.filter((h) => habitDueOn(h, t));
+  const doneToday = dueToday.filter((h) => isHabitDone(h, t)).length;
   let due = 0, done = 0;
-  habits.forEach((h) => days.forEach((d) => {
+  habits.forEach((h) => week.forEach((d) => {
     if (d <= t && habitDueOn(h, d)) {
       due++;
       if (isHabitDone(h, d)) done++;
     }
   }));
+  const rate = due ? Math.round((done / due) * 100) : 0;
 
   return (
     <>
-      <div className="row-between" style={{ marginBottom: 10 }}>
-        <div className="row" style={{ gap: 4 }}>
-          <button className="btn btn-ghost" onClick={() => setWeekOffset(weekOffset - 1)}>‹</button>
-          <span style={{ fontWeight: 600, fontSize: 13 }}>
-            {weekOffset === 0 ? 'Cette semaine' : `${parseDate(days[0]).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} – ${parseDate(days[6]).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`}
-          </span>
-          <button className="btn btn-ghost" disabled={weekOffset >= 0} style={{ opacity: weekOffset >= 0 ? 0.3 : 1 }} onClick={() => setWeekOffset(weekOffset + 1)}>›</button>
-        </div>
-        <span className="faint small mono">{due ? Math.round((done / due) * 100) : 0} % réussi</span>
-      </div>
-
-      <div className="card" style={{ padding: '12px 10px 6px 14px' }}>
-        {habits.length === 0 ? (
-          <Empty title="Aucune habitude">Ajoute ce que tu veux tenir tous les jours.</Empty>
-        ) : (
-          <div className="week-grid">
-            <div />
-            {days.map((d) => (
-              <div key={d} className={'day-h' + (d === t ? ' today' : '')}>
-                {DAYS_SHORT[parseDate(d).getDay()]}
-                <div style={{ fontSize: 10, opacity: 0.8 }}>{parseDate(d).getDate()}</div>
-              </div>
-            ))}
-            {habits.map((h) => (
-              <HabitRow key={h.id} h={h} days={days} t={t} onToggle={(d) => toggle(h, d)} onEdit={() => setEdit(h)} />
-            ))}
+      <div className="hb-head card">
+        <div className="hb-title">Mes habitudes</div>
+        <div className="hb-sub">Des routines qui te rapprochent de ton objectif.</div>
+        <div className="hb-stats">
+          <div>
+            <div className="hb-num" style={{ color: '#3b82f6' }}>{habits.length}</div>
+            <div className="hb-lbl">Habitudes</div>
           </div>
-        )}
+          <div>
+            <div className="hb-num" style={{ color: '#22c55e' }}>{doneToday}<span className="hb-den">/{dueToday.length}</span></div>
+            <div className="hb-lbl">Faites aujourd’hui</div>
+          </div>
+          <div>
+            <div className="hb-num" style={{ color: '#c026d3' }}>{rate}<span className="hb-den"> %</span></div>
+            <div className="hb-lbl">Cette semaine</div>
+          </div>
+        </div>
       </div>
-      <button className="btn btn-block" style={{ marginTop: 12 }} onClick={() => setEdit('new')}><Plus size={15} /> Nouvelle habitude</button>
-      <HabitSheet habit={edit} onClose={() => setEdit(null)} />
-    </>
-  );
-}
 
-function HabitRow({ h, days, t, onToggle, onEdit }: { h: Habit; days: string[]; t: string; onToggle: (d: string) => void; onEdit: () => void }) {
-  const streak = habitStreak(h);
-  return (
-    <>
-      <button onClick={onEdit} style={{ textAlign: 'left', minWidth: 0, padding: '6px 0' }}>
-        <div className="ellipsis" style={{ fontWeight: 550, fontSize: 13.5, display: 'flex', alignItems: 'center', gap: 5 }}>
-          {h.emoji && <span>{h.emoji}</span>}
-          <span className="ellipsis">{h.name}</span>
-        </div>
-        <div className="faint small row" style={{ gap: 6, marginTop: 2 }}>
-          {streak > 0 && <span className="row" style={{ gap: 2 }}><Flame size={11} color="var(--accent)" /> {streak} j</span>}
-          {h.reminderTime && <span className="row" style={{ gap: 2 }}><Clock size={10} /> {h.reminderTime}</span>}
-        </div>
+      <button className="hb-new card" onClick={() => setEdit('new')}>
+        <span className="hb-new-ic"><Plus size={14} strokeWidth={2.8} /></span>
+        <span className="grow">Nouvelle habitude</span>
+        <ChevronRight size={17} color="var(--text-3)" />
       </button>
-      {days.map((d) => {
-        const dueDay = habitDueOn(h, d);
-        const on = isHabitDone(h, d);
-        const frozen = h.freezes?.includes(d);
-        const future = d > t;
-        const curVal = h.values?.[d] ?? 0;
-        return (
-          <button
-            key={d}
-            className={'wcell' + (on ? ' on' : '') + (frozen ? ' frozen' : '') + (!dueDay ? ' off' : '') + (future ? ' future' : '')}
-            disabled={future}
-            onClick={() => onToggle(d)}
-            aria-label={`${h.name} ${d}`}
-            title={h.kind === 'numeric' ? `${curVal}/${h.targetValue} ${h.unit || ''}` : undefined}
-          >
-            {on ? (
-              <svg width="12" height="12" viewBox="0 0 16 16"><path d="M3.5 8.5 6.5 11.5 12.5 5" stroke="currentColor" strokeWidth="2.4" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            ) : frozen ? (
-              <Snowflake size={11} />
-            ) : h.kind === 'numeric' && curVal > 0 ? (
-              <span style={{ fontSize: 9.5, fontWeight: 700 }}>{curVal}</span>
-            ) : null}
-          </button>
-        );
-      })}
+
+      {habits.length === 0 ? (
+        <div className="card"><Empty title="Aucune habitude">Ajoute ce que tu veux tenir tous les jours.</Empty></div>
+      ) : (
+        <div className="hb-list">
+          {habits.map((h, i) => (
+            <HabitCard key={h.id} h={h} color={h.color || HABIT_COLORS[i % HABIT_COLORS.length]} t={t} onEdit={() => setEdit(h)} />
+          ))}
+        </div>
+      )}
+      <HabitSheet habit={edit} defaultColor={HABIT_COLORS[s.habits.length % HABIT_COLORS.length]} onClose={() => setEdit(null)} />
     </>
   );
 }
 
-function HabitSheet({ habit, onClose }: { habit: Habit | 'new' | null; onClose: () => void }) {
+function bestStreak(h: Habit, t: string) {
+  let best = 0, run = 0;
+  for (let i = 365; i >= 0; i--) {
+    const d = addDays(t, -i);
+    if (!habitDueOn(h, d)) continue;
+    if (isHabitDone(h, d)) best = Math.max(best, ++run);
+    else if (h.freezes?.includes(d) || d === t) continue;
+    else run = 0;
+  }
+  return best;
+}
+
+function HabitCard({ h, color, t, onEdit }: { h: Habit; color: string; t: string; onEdit: () => void }) {
+  const [showStats, setShowStats] = useState(false);
+  const dow = (parseDate(t).getDay() + 6) % 7;
+  const start = addDays(t, -dow - (WEEKS - 1) * 7);
+  const cells = Array.from({ length: WEEKS * 7 }, (_, i) => addDays(start, i));
+  const thisWeek = cells.slice(-7);
+
+  const numeric = h.kind === 'numeric';
+  const cur = h.values?.[t] ?? 0;
+  const target = h.targetValue || 1;
+  const step = h.step || 1;
+  const unit = h.unit || '';
+  const doneT = isHabitDone(h, t);
+  const dueT = habitDueOn(h, t);
+  const perWeek = h.frequencyType === 'times_per_week';
+  const weekDone = thisWeek.filter((d) => isHabitDone(h, d)).length;
+  const streak = habitStreak(h);
+
+  // plus la série est longue, plus la case est foncée
+  let run = 0;
+  const states = cells.map((d) => {
+    if (d > t) return { d, cls: 'future' };
+    if (isHabitDone(h, d)) {
+      run++;
+      return { d, cls: 'done', i: Math.min(100, 55 + run * 15) };
+    }
+    if (h.freezes?.includes(d)) return { d, cls: 'frozen' };
+    const due = habitDueOn(h, d);
+    if (due && d !== t) run = 0;
+    if (numeric && (h.values?.[d] ?? 0) > 0) return { d, cls: 'partial' };
+    return { d, cls: due ? 'miss' : 'off' };
+  });
+
+  const toggleDay = (d: string) => {
+    if (d > t) return;
+    haptic();
+    const was = isHabitDone(h, d);
+    setHabitProgress(h.id, d, 'toggle');
+    if (d !== t) {
+      const label = parseDate(d).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+      toast(`${was ? 'Retiré' : 'Validé'} · ${label}`, { label: 'Annuler', run: () => setHabitProgress(h.id, d, 'toggle') });
+    }
+  };
+
+  const checkIn = () => {
+    haptic();
+    setHabitProgress(h.id, t, numeric ? step : 'toggle');
+  };
+
+  const remove = () => {
+    haptic();
+    let idx = -1;
+    update((d) => {
+      idx = d.habits.findIndex((x) => x.id === h.id);
+      if (idx >= 0) d.habits.splice(idx, 1);
+    });
+    toast('Habitude supprimée', {
+      label: 'Annuler',
+      run: () => update((d) => { if (!d.habits.some((x) => x.id === h.id)) d.habits.splice(Math.max(0, idx), 0, h); })
+    });
+  };
+
+  let stats: { streak: number; best: number; rate30: number; total: number } | null = null;
+  if (showStats) {
+    let due30 = 0, done30 = 0;
+    for (let i = 0; i < 30; i++) {
+      const d = addDays(t, -i);
+      if (habitDueOn(h, d) && (d !== t || isHabitDone(h, d))) {
+        due30++;
+        if (isHabitDone(h, d)) done30++;
+      }
+    }
+    stats = {
+      streak,
+      best: bestStreak(h, t),
+      rate30: due30 ? Math.round((done30 / due30) * 100) : 0,
+      total: new Set(h.done).size
+    };
+  }
+
+  const pct = numeric && !doneT ? Math.min(100, (cur / target) * 100) : 0;
+
+  return (
+    <div className="hb-card" style={{ '--c': color } as CSSProperties}>
+      <div className="hb-main">
+        <div className="hm" role="grid" aria-label={`Historique ${h.name}`}>
+          {states.map(({ d, cls, i }) => (
+            <button
+              key={d + cls}
+              className={'hm-cell ' + cls + (d === t ? ' today' : '')}
+              style={i ? ({ '--i': i + '%' } as CSSProperties) : undefined}
+              disabled={cls === 'future'}
+              onClick={() => toggleDay(d)}
+              aria-label={`${h.name} ${d}`}
+              title={numeric ? `${fmtNum(h.values?.[d] ?? 0)}/${fmtNum(target)} ${unit}` : undefined}
+            />
+          ))}
+        </div>
+
+        <div className="hb-side">
+          <button className="hb-name" onClick={onEdit}>
+            {h.emoji && <span className="em">{h.emoji}</span>}
+            <span className="ellipsis">{h.name}</span>
+          </button>
+          {(streak > 0 || h.reminderTime || perWeek) && (
+            <div className="hb-meta">
+              {perWeek && <span>{weekDone}/{h.timesPerWeek || 3} cette sem.</span>}
+              {streak > 0 && <span className="row" style={{ gap: 2 }}><Flame size={11} color="#f97316" /> {streak} j</span>}
+              {h.reminderTime && <span className="row" style={{ gap: 2 }}><Clock size={10} /> {h.reminderTime}</span>}
+            </div>
+          )}
+
+          <div className="hb-icons">
+            <button className={'hb-ic' + (showStats ? ' on' : '')} aria-label="Statistiques" onClick={() => { haptic(); setShowStats(!showStats); }}>
+              <BarChart3 size={16} strokeWidth={2.4} />
+            </button>
+            <button className="hb-ic del" aria-label="Supprimer" onClick={remove}>
+              <Trash2 size={15} strokeWidth={2.2} />
+            </button>
+          </div>
+
+          <div className="hb-days">
+            {WEEK_ORDER.map((wd, i) => {
+              const d = thisWeek[i];
+              const on = perWeek ? isHabitDone(h, d) : h.days.includes(wd);
+              return (
+                <span key={wd} className={'hb-day' + (on ? ' on' : '') + (d === t ? ' today' : '')}>
+                  {DAYS_SHORT[wd]}
+                </span>
+              );
+            })}
+          </div>
+
+          <div className="hb-actions">
+            {numeric && cur > 0 && (
+              <button className="hb-minus" aria-label="Retirer" onClick={() => { haptic(); setHabitProgress(h.id, t, -step); }}>
+                <Minus size={17} strokeWidth={2.6} />
+              </button>
+            )}
+            <button
+              className={'hb-check' + (doneT ? ' done' : !dueT ? ' soft' : '')}
+              style={{ '--p': pct + '%' } as CSSProperties}
+              onClick={checkIn}
+            >
+              <span className="hb-check-in">
+                {doneT ? (
+                  <><Check size={17} strokeWidth={3} /> {numeric ? `${fmtNum(cur)}/${fmtNum(target)} ${unit}` : 'Fait'}</>
+                ) : numeric ? (
+                  <><Plus size={17} strokeWidth={2.8} /> {fmtNum(step)} {unit}<span className="hb-check-sub">{fmtNum(cur)}/{fmtNum(target)}</span></>
+                ) : (
+                  <><Plus size={17} strokeWidth={2.8} /> Valider</>
+                )}
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {stats && (
+        <div className="hb-statrow">
+          <div><b>{stats.streak} j</b><span>Série</span></div>
+          <div><b>{stats.best} j</b><span>Record</span></div>
+          <div><b>{stats.rate30} %</b><span>30 jours</span></div>
+          <div><b>{stats.total}</b><span>Total</span></div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HabitSheet({ habit, defaultColor, onClose }: { habit: Habit | 'new' | null; defaultColor: string; onClose: () => void }) {
   const isNew = habit === 'new';
   const [name, setName] = useState('');
   const [emoji, setEmoji] = useState('💧');
+  const [color, setColor] = useState(defaultColor);
   const [days, setDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
   const [freqType, setFreqType] = useState<HabitFrequencyType>('days');
   const [timesPerWeek, setTimesPerWeek] = useState(3);
@@ -160,6 +311,7 @@ function HabitSheet({ habit, onClose }: { habit: Habit | 'new' | null; onClose: 
     if (habit && habit !== 'new') {
       setName(habit.name);
       setEmoji(habit.emoji || '💧');
+      setColor(habit.color || defaultColor);
       setDays(habit.days || [0, 1, 2, 3, 4, 5, 6]);
       setFreqType(habit.frequencyType || 'days');
       setTimesPerWeek(habit.timesPerWeek || 3);
@@ -173,6 +325,7 @@ function HabitSheet({ habit, onClose }: { habit: Habit | 'new' | null; onClose: 
     } else {
       setName('');
       setEmoji('💧');
+      setColor(defaultColor);
       setDays([0, 1, 2, 3, 4, 5, 6]);
       setFreqType('days');
       setTimesPerWeek(3);
@@ -194,6 +347,7 @@ function HabitSheet({ habit, onClose }: { habit: Habit | 'new' | null; onClose: 
       const payload = {
         name: name.trim(),
         emoji,
+        color,
         days,
         frequencyType: freqType,
         timesPerWeek: freqType === 'times_per_week' ? timesPerWeek : undefined,
@@ -283,6 +437,21 @@ function HabitSheet({ habit, onClose }: { habit: Habit | 'new' | null; onClose: 
             >
               {em}
             </button>
+          ))}
+        </div>
+      </Field>
+
+      <Field label="Couleur">
+        <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
+          {HABIT_COLORS.map((c) => (
+            <button
+              key={c}
+              type="button"
+              aria-label={c}
+              className={'hb-swatch' + (color === c ? ' on' : '')}
+              style={{ '--c': c } as CSSProperties}
+              onClick={() => setColor(c)}
+            />
           ))}
         </div>
       </Field>
