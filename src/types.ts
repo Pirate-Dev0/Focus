@@ -2,6 +2,19 @@ export type Status = 'todo' | 'doing' | 'blocked' | 'done';
 export type Priority = 'p0' | 'p1' | 'p2' | 'p3' | 'none';
 export type ProjectStatus = 'idee' | 'construction' | 'lance' | 'croissance' | 'pause' | 'termine';
 
+export type RecurrenceFreq = 'daily' | 'weekdays' | 'weekly' | 'monthly' | 'yearly' | 'after_completion';
+export interface TaskRecurrence {
+  freq: RecurrenceFreq;
+  interval?: number; // intervalle (ex: tous les 2 jours / tous les 3 mois)
+  daysOfWeek?: number[]; // pour hebdomadaire sur jours précis (0 = dimanche)
+}
+
+export interface TaskReminder {
+  enabled: boolean;
+  offsetMinutes: number; // 0 = à l'heure pile, 15 = 15m avant, 60 = 1h avant, 1440 = 1 jour avant
+  customTime?: string; // HH:MM
+}
+
 export interface ChecklistItem { id: string; text: string; done: boolean }
 
 export interface Task {
@@ -12,6 +25,13 @@ export interface Task {
   status: Status;
   priority: Priority;
   due?: string; // YYYY-MM-DD
+  dueTime?: string; // HH:MM
+  startDate?: string; // YYYY-MM-DD
+  reminder?: TaskReminder;
+  recurrence?: TaskRecurrence;
+  estimateMinutes?: number; // 15, 30, 45, 60, 90, 120...
+  tags?: string[];
+  url?: string;
   checklist: ChecklistItem[];
   createdAt: number;
   doneAt?: number;
@@ -40,11 +60,28 @@ export interface Project {
   createdAt: number;
 }
 
+export type HabitKind = 'boolean' | 'numeric';
+export type TimeOfDay = 'any' | 'morning' | 'afternoon' | 'evening';
+export type HabitFrequencyType = 'days' | 'times_per_week';
+
 export interface Habit {
   id: string;
   name: string;
+  emoji?: string;
+  color?: string;
   days: number[]; // 0 = dimanche
-  done: string[]; // dates YYYY-MM-DD
+  frequencyType?: HabitFrequencyType;
+  timesPerWeek?: number; // cible : X fois par semaine
+  kind?: HabitKind;
+  targetValue?: number; // ex: 2 (L), 20 (pages), 10000 (pas)
+  unit?: string; // ex: "L", "pages", "pas", "min"
+  step?: number; // incrément par tap (ex: 0.5, 5, 1000)
+  values?: Record<string, number>; // progression par date YYYY-MM-DD
+  timeOfDay?: TimeOfDay;
+  reminderTime?: string; // HH:MM (ex: "08:30")
+  freezes?: string[]; // dates où un joker/freeze a été utilisé
+  streakGoal?: number; // ex: 30 jours
+  done: string[]; // dates YYYY-MM-DD validées
   archived: boolean;
 }
 

@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { ArrowRight, ArrowUpRight, CalendarClock, ChevronDown, ChevronUp, Dumbbell, Eye, EyeOff, Flag, Flame, FolderKanban, Plus, Settings, SlidersHorizontal, Target, TrendingUp, Wallet, Zap } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, CalendarClock, ChevronDown, ChevronUp, Clock, Dumbbell, Eye, EyeOff, Flag, Flame, FolderKanban, Plus, Settings, SlidersHorizontal, Snowflake, Target, TrendingUp, Wallet, Zap } from 'lucide-react';
 import { update, useAppState } from '../store';
 import { go } from '../router';
 import { Field, NumInput, Progress, Sheet, Sparkline } from '../components/ui';
@@ -7,10 +7,10 @@ import { TaskSheet } from '../components/TaskSheet';
 import { TaskRow } from '../components/TaskRow';
 import { SyncBadge } from '../App';
 import { isConnected } from '../sync';
-import { addTaskFromText, moveTasksTo } from '../actions';
-import type { HomeSection, State } from '../types';
+import { addTaskFromText, moveTasksTo, setHabitProgress } from '../actions';
+import type { Habit, HomeSection, State, TimeOfDay } from '../types';
 import {
-  addDays, clamp, dayShort, daysBetween, doneOn, eur, fmtDate, greeting, habitDueOn, habitStreak, haptic, monthlySubs, mrrTotal, num,
+  addDays, clamp, dayShort, daysBetween, doneOn, eur, fmtDate, greeting, habitDueOn, habitStreak, haptic, isHabitDone, monthlySubs, mrrTotal, num,
   openTasksFor, parseDate, spentThisMonth, today, vintedStats
 } from '../utils';
 
@@ -44,7 +44,7 @@ export default function Dashboard() {
 
   const projectName = (id: string) => s.projects.find((p) => p.id === id)?.name || '';
   const habitsDue = s.habits.filter((h) => !h.archived && habitDueOn(h, day));
-  const habitsDone = habitsDue.filter((h) => h.done.includes(day)).length;
+  const habitsDone = habitsDue.filter((h) => isHabitDone(h, day)).length;
   const open = useMemo(() => openTasksFor(s.tasks, day), [s.tasks, day]);
   const doneToday = s.tasks.filter((x) => doneOn(x, day));
 
@@ -214,32 +214,127 @@ function HabitsSection({ day }: { day: string }) {
   const s = useAppState();
   const t = today();
   const future = day > t;
-  const habits = s.habits.filter((h) => !h.archived && habitDueOn(h, day));
-  const done = habits.filter((h) => h.done.includes(day)).length;
-  const toggle = (id: string) => {
+  const [filterSlot, setFilterSlot] = useState<TimeOfDay | 'all'>('all');
+  const allHabitsDue = s.habits.filter((h) => !h.archived && habitDueOn(h, day));
+  const doneCount = allHabitsDue.filter((h) => isHabitDone(h, day)).length;
+
+  const hasSlots = allHabitsDue.some((h) => h.timeOfDay && h.timeOfDay !== 'any');
+  const habits = filterSlot === 'all'
+    ? allHabitsDue
+    : allHabitsDue.filter((h) => h.timeOfDay === filterSlot);
+
+  const toggle = (h: Habit) => {
     if (future) return;
     haptic();
-    update((d) => {
-      const h = d.habits.find((x) => x.id === id)!;
-      h.done = h.done.includes(day) ? h.done.filter((x) => x !== day) : [...h.done, day];
-    });
+    setHabitProgress(h.id, day, 'toggle');
   };
+
+  const addStep = (h: Habit) => {
+    if (future) return;
+    haptic();
+    setHabitProgress(h.id, day, h.step || 1);
+  };
+
   return (
     <section className="home-section">
       <div className="section-title">
-        <span>Habitudes<span className="count">{done}/{habits.length}</span></span>
+        <span>Habitudes<span className="count">{doneCount}/{allHabitsDue.length}</span></span>
         <button className="link-btn" onClick={() => go('life')}>Semaine <ArrowRight size={12} /></button>
       </div>
+
+      {hasSlots && (
+        <div className="row" style={{ gap: 6, marginBottom: 10, overflowX: 'auto', paddingBottom: 2 }}>
+          {[
+            { id: 'all', l: 'Toutes' },
+            { id: 'morning', l: 'Matin ☀️' },
+            { id: 'afternoon', l: 'Après-midi 🌤️' },
+            { id: 'evening', l: 'Soir 🌙' }
+          ].map((slot) => (
+            <button
+              key={slot.id}
+              className={'chip chip-xs' + (filterSlot === slot.id ? ' solid' : '')}
+              onClick={() => setFilterSlot(slot.id as any)}
+            >
+              {slot.l}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="habit-grid">
         {habits.map((h) => {
-          const on = h.done.includes(day);
+          const on = isHabitDone(h, day);
+          const frozen = h.freezes?.includes(day);
           const streak = habitStreak(h);
+          const curVal = h.values?.[day] ?? 0;
+          const target = h.targetValue || 1;
+          const isNumeric = h.kind === 'numeric';
+
           return (
-            <button key={h.id} className={'habit-tile' + (on ? ' on' : '')} disabled={future} onClick={() => toggle(h.id)} aria-pressed={on}>
-              <span className="ht-check">{on && <svg width="12" height="12" viewBox="0 0 16 16"><path d="M3.5 8.5 6.5 11.5 12.5 5" stroke="currentColor" strokeWidth="2.6" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>}</span>
-              <span className="ht-name">{h.name}</span>
-              {streak > 1 && <span className="ht-streak"><Flame size={11} />{streak}</span>}
-            </button>
+            <div
+              key={h.id}
+              className={'habit-tile' + (on ? ' on' : '') + (frozen ? ' frozen' : '')}
+              style={{ cursor: future ? 'default' : 'pointer' }}
+              onClick={() => toggle(h)}
+              role="button"
+              tabIndex={0}
+              aria-pressed={on}
+            >
+              <button
+                type="button"
+                className="ht-check"
+                disabled={future}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggle(h);
+                }}
+              >
+                {on ? (
+                  <svg width="12" height="12" viewBox="0 0 16 16"><path d="M3.5 8.5 6.5 11.5 12.5 5" stroke="currentColor" strokeWidth="2.6" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                ) : frozen ? (
+                  <Snowflake size={11} color="#38bdf8" />
+                ) : null}
+              </button>
+
+              <div className="grow" style={{ minWidth: 0 }}>
+                <div className="ht-name" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  {h.emoji && <span>{h.emoji}</span>}
+                  <span className="ellipsis">{h.name}</span>
+                </div>
+                {isNumeric ? (
+                  <div className="faint small" style={{ fontSize: 11, marginTop: 2 }}>
+                    {curVal} / {target} {h.unit || ''}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="row" style={{ gap: 4, alignItems: 'center' }}>
+                {isNumeric && !on && !future && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{ height: 26, padding: '0 6px', fontSize: 11, fontWeight: 700, borderRadius: 6, border: '1px solid var(--border)' }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      addStep(h);
+                    }}
+                    title={`Ajouter +${h.step || 1}`}
+                  >
+                    +{h.step || 1}
+                  </button>
+                )}
+                {streak > 1 && (
+                  <span className="ht-streak" title={`${streak} jours consécutifs`}>
+                    <Flame size={11} />{streak}
+                  </span>
+                )}
+                {h.reminderTime && !streak && (
+                  <span className="ht-streak" title={`Rappel à ${h.reminderTime}`}>
+                    <Clock size={10} />
+                  </span>
+                )}
+              </div>
+            </div>
           );
         })}
       </div>

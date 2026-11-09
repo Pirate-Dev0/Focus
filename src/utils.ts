@@ -1,4 +1,4 @@
-import type { Priority, ProjectStatus, State, Status, Habit, Task, VintedItem } from './types';
+import type { Priority, ProjectStatus, State, Status, Habit, Task, VintedItem, TaskRecurrence } from './types';
 
 export const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 
@@ -113,21 +113,86 @@ export function vintedStats(items: VintedItem[]) {
   };
 }
 
-export const habitDueOn = (h: Habit, date: string) => h.days.includes(parseDate(date).getDay());
+export const isHabitDone = (h: Habit, date: string) => {
+  if (h.kind === 'numeric') {
+    const val = h.values?.[date] ?? 0;
+    return val >= (h.targetValue || 1) || h.done.includes(date);
+  }
+  return h.done.includes(date);
+};
+
+export const habitDueOn = (h: Habit, date: string) => {
+  if (h.frequencyType === 'times_per_week') return true;
+  return h.days.includes(parseDate(date).getDay());
+};
 
 export function habitStreak(h: Habit) {
   let streak = 0;
   let d = today();
   // aujourd'hui pas encore fait ne casse pas la série
-  if (!h.done.includes(d)) d = addDays(d, -1);
+  if (!isHabitDone(h, d) && !h.freezes?.includes(d)) d = addDays(d, -1);
   for (let i = 0; i < 400; i++) {
     if (habitDueOn(h, d)) {
-      if (h.done.includes(d)) streak++;
-      else break;
+      if (isHabitDone(h, d)) {
+        streak++;
+      } else if (h.freezes?.includes(d)) {
+        // Jour de joker / freeze : ne brise pas la série
+      } else {
+        break;
+      }
     }
     d = addDays(d, -1);
   }
   return streak;
+}
+
+export function computeNextDueDate(baseDue: string, rec: TaskRecurrence, fromDate?: string): string {
+  const startStr = fromDate || baseDue || today();
+  const d = parseDate(startStr);
+  const interval = Math.max(1, rec.interval || 1);
+
+  switch (rec.freq) {
+    case 'daily':
+      d.setDate(d.getDate() + interval);
+      return iso(d);
+    case 'weekdays': {
+      do {
+        d.setDate(d.getDate() + 1);
+      } while (d.getDay() === 0 || d.getDay() === 6);
+      return iso(d);
+    }
+    case 'weekly': {
+      if (rec.daysOfWeek && rec.daysOfWeek.length > 0) {
+        // Cherche le prochain jour de la liste
+        let next = new Date(d);
+        for (let i = 1; i <= 7 * interval; i++) {
+          next.setDate(next.getDate() + 1);
+          if (rec.daysOfWeek.includes(next.getDay())) return iso(next);
+        }
+      }
+      d.setDate(d.getDate() + 7 * interval);
+      return iso(d);
+    }
+    case 'monthly':
+      d.setMonth(d.getMonth() + interval);
+      return iso(d);
+    case 'yearly':
+      d.setFullYear(d.getFullYear() + interval);
+      return iso(d);
+    case 'after_completion':
+      return addDays(today(), interval);
+    default:
+      d.setDate(d.getDate() + 1);
+      return iso(d);
+  }
+}
+
+export function fmtDuration(min?: number): string {
+  if (!min || min <= 0) return '';
+  if (min < 60) return `${min}m`;
+  const h = Math.floor(min / 60);
+  const rem = min % 60;
+  return rem ? `${h}h${rem}` : `${h}h`;
 }
 
 export const est1RM = (w: number, r: number) => (r <= 1 ? w : w * (1 + r / 30));
@@ -166,7 +231,12 @@ export function openTasksFor(tasks: Task[], day: string) {
   return tasks
     .filter((x) => x.status !== 'done')
     .filter((x) => (day === t ? (x.due && x.due <= t) || x.status === 'doing' || (x.priority === 'p0' && !x.due) : x.due === day))
-    .sort((a, b) => prioRank(a.priority) - prioRank(b.priority) || (a.due || '9').localeCompare(b.due || '9') || a.createdAt - b.createdAt);
+    .sort((a, b) => {
+      if (a.dueTime && b.dueTime) return a.dueTime.localeCompare(b.dueTime);
+      if (a.dueTime && !b.dueTime) return -1;
+      if (!a.dueTime && b.dueTime) return 1;
+      return prioRank(a.priority) - prioRank(b.priority) || (a.due || '9').localeCompare(b.due || '9') || a.createdAt - b.createdAt;
+    });
 }
 
 export function dayShort(day: string) {

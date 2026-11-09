@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { CalendarClock, Check as CheckIcon, ListChecks } from 'lucide-react';
+import { Bell, CalendarClock, Check as CheckIcon, Clock, ExternalLink, ListChecks, Repeat, Tag } from 'lucide-react';
 import type { Task } from '../types';
 import { postponeTask, setTaskDone } from '../actions';
-import { daysBetween, fmtDate, haptic, today } from '../utils';
+import { daysBetween, fmtDate, fmtDuration, haptic, today } from '../utils';
 import { Check, PriorityIcon } from './ui';
 import { SwipeRow } from './SwipeRow';
 
@@ -29,10 +29,49 @@ export function TaskRow({ task, project, onOpen, day }: { task: Task; project?: 
 
   const meta = [
     project && project !== 'Général' ? <span key="p">{project}</span> : null,
+    task.recurrence ? (
+      <span key="rec" className="chip chip-xs" title="Tâche récurrente">
+        <Repeat size={10} /> {task.recurrence.freq === 'daily' ? '1j' : task.recurrence.freq === 'weekdays' ? 'L-V' : task.recurrence.freq === 'weekly' ? '1sem' : task.recurrence.freq === 'monthly' ? '1m' : 'Auto'}
+      </span>
+    ) : null,
+    task.dueTime ? (
+      <span key="tm" className="chip chip-xs">
+        <Clock size={10} /> {task.dueTime}
+      </span>
+    ) : null,
+    task.reminder?.enabled ? (
+      <span key="rem" className="chip chip-xs" title="Rappel programmé">
+        <Bell size={10} />
+      </span>
+    ) : null,
+    task.estimateMinutes ? (
+      <span key="est" className="chip chip-xs">
+        {fmtDuration(task.estimateMinutes)}
+      </span>
+    ) : null,
     task.status === 'doing' ? <span key="s" className="chip chip-xs">En cours</span> : null,
     task.status === 'blocked' ? <span key="b" className="chip chip-xs danger">Bloqué</span> : null,
     showDue ? <span key="d" className={'chip chip-xs' + (late ? ' danger' : '')}>{late && daysBetween(task.due!, t) > 1 ? `${daysBetween(task.due!, t)} j de retard` : fmtDate(task.due)}</span> : null,
-    cl ? <span key="c" className="row" style={{ gap: 3 }}><ListChecks size={12} /> {cd}/{cl}</span> : null
+    cl ? <span key="c" className="row" style={{ gap: 3 }}><ListChecks size={12} /> {cd}/{cl}</span> : null,
+    task.tags?.map((tg) => (
+      <span key={'tag-' + tg} className="chip chip-xs">
+        <Tag size={9} /> #{tg}
+      </span>
+    )),
+    task.url ? (
+      <a
+        key="link"
+        href={task.url}
+        target="_blank"
+        rel="noreferrer"
+        className="chip chip-xs"
+        style={{ color: 'var(--accent)' }}
+        onClick={(e) => e.stopPropagation()}
+        title="Ouvrir le lien"
+      >
+        <ExternalLink size={10} /> Lien
+      </a>
+    ) : null
   ].filter(Boolean);
 
   return (

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { CheckSquare, Receipt, Shirt, Scale } from 'lucide-react';
+import { CheckSquare, Clock, Receipt, Repeat, Scale, Shirt } from 'lucide-react';
 import { getState, update, useAppState } from '../store';
 import { ChipScroll, Field, NumInput, Segmented, Sheet, toast, PriorityIcon } from './ui';
-import type { Priority } from '../types';
+import type { Priority, RecurrenceFreq } from '../types';
 import { addDays, fmtDate, haptic, PRIORITY_LABEL, today, uid } from '../utils';
 import { addTaskFromText, projectFromTag } from '../actions';
 
@@ -20,7 +20,9 @@ export function QuickAdd({ open, onClose, defaultProject, defaultDue }: { open: 
   const [title, setTitle] = useState('');
   const [projectId, setProjectId] = useState('');
   const [due, setDue] = useState<string>('');
+  const [dueTime, setDueTime] = useState<string>('');
   const [prio, setPrio] = useState<Priority>('none');
+  const [rec, setRec] = useState<RecurrenceFreq | 'none'>('none');
   // dépense
   const [name, setName] = useState('');
   const [amount, setAmount] = useState<number>(0);
@@ -43,7 +45,7 @@ export function QuickAdd({ open, onClose, defaultProject, defaultDue }: { open: 
     const st = getState();
     setKind('task');
     setProjectId(defaultProject || st.projects.find((p) => p.name === 'Général')?.id || st.projects[0]?.id || '');
-    setTitle(''); setDue(defaultDue || ''); setPrio('none'); setName(''); setAmount(0); setVName(''); setVBuy(0); setVTarget(0);
+    setTitle(''); setDue(defaultDue || ''); setDueTime(''); setPrio('none'); setRec('none'); setName(''); setAmount(0); setVName(''); setVBuy(0); setVTarget(0);
     const last = st.bodyWeights[st.bodyWeights.length - 1];
     setKg(last?.kg || 0);
     // le clavier a déjà été ouvert par le tap sur « + » (primeKeyboard) : on passe le focus au vrai champ
@@ -60,7 +62,13 @@ export function QuickAdd({ open, onClose, defaultProject, defaultDue }: { open: 
   const submit = () => {
     if (kind === 'task') {
       if (!title.trim()) return;
-      const task = addTaskFromText(title, { projectId, due: due || undefined, priority: prio });
+      const task = addTaskFromText(title, {
+        projectId,
+        due: due || undefined,
+        dueTime: dueTime || undefined,
+        priority: prio,
+        recurrence: rec !== 'none' ? { freq: rec } : undefined
+      });
       toast(task?.due ? `Tâche ajoutée pour ${fmtDate(task.due).toLowerCase()}` : 'Tâche ajoutée');
     } else if (kind === 'expense') {
       if (!name.trim() || !amount) return;
@@ -130,12 +138,45 @@ export function QuickAdd({ open, onClose, defaultProject, defaultDue }: { open: 
                 ))}
               </ChipScroll>
             </Field>
-            <Field label="Échéance">
-              <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
+            <Field label="Échéance & Heure">
+              <div className="row" style={{ flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
                 {dueOpts.map((o) => (
                   <button key={o.l} type="button" className={'chip chip-lg' + (due === o.v ? ' solid' : '')} onClick={() => setDue(o.v)}>{o.l}</button>
                 ))}
-                <input type="date" className="input" style={{ width: 150, height: 34 }} value={due} onChange={(e) => setDue(e.target.value)} />
+                <input type="date" className="input" style={{ width: 140, height: 34 }} value={due} onChange={(e) => setDue(e.target.value)} />
+              </div>
+              <div className="row" style={{ gap: 6, alignItems: 'center' }}>
+                <span className="faint small row" style={{ gap: 3 }}><Clock size={12} /> Heure :</span>
+                <input
+                  type="time"
+                  className="input"
+                  style={{ width: 110, height: 32 }}
+                  value={dueTime}
+                  onChange={(e) => setDueTime(e.target.value)}
+                />
+                {dueTime && (
+                  <button type="button" className="btn btn-ghost small" onClick={() => setDueTime('')}>Effacer</button>
+                )}
+              </div>
+            </Field>
+            <Field label="Répétition">
+              <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
+                {[
+                  { f: 'none', l: 'Aucune' },
+                  { f: 'daily', l: 'Tous les jours' },
+                  { f: 'weekdays', l: 'Jours ouvrés' },
+                  { f: 'weekly', l: 'Hebdo' },
+                  { f: 'monthly', l: 'Mensuel' }
+                ].map((opt) => (
+                  <button
+                    key={opt.f}
+                    type="button"
+                    className={'chip chip-lg' + (rec === opt.f ? ' solid' : '')}
+                    onClick={() => setRec(opt.f as any)}
+                  >
+                    {opt.f !== 'none' && <Repeat size={11} />} {opt.l}
+                  </button>
+                ))}
               </div>
             </Field>
             <Field label="Priorité">

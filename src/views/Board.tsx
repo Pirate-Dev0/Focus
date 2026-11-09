@@ -192,7 +192,7 @@ function CardItem({ t, onOpen }: { t: Task; onOpen: () => void }) {
 function CardBody({ t, className, withCheck }: { t: Task; className: string; withCheck?: boolean }) {
   const cl = t.checklist.length;
   const cd = t.checklist.filter((c) => c.done).length;
-  const hasMeta = t.priority !== 'none' || t.due || cl || t.notes;
+  const hasMeta = t.priority !== 'none' || t.due || t.dueTime || t.recurrence || t.reminder || cl || t.notes || (t.tags && t.tags.length > 0) || t.url;
   return (
     <div className={className} style={{ cursor: 'pointer' }}>
       <div className="row" style={{ alignItems: 'flex-start', gap: 10 }}>
@@ -207,9 +207,24 @@ function CardBody({ t, className, withCheck }: { t: Task; className: string; wit
       {hasMeta ? (
         <div className="m" style={withCheck ? { paddingLeft: 32 } : undefined}>
           {t.priority !== 'none' && <PriorityIcon p={t.priority} size={13} />}
-          <DueChip due={t.due} done={t.status === 'done'} />
+          <DueChip task={t} due={t.due} done={t.status === 'done'} />
           {cl > 0 && <span className="row" style={{ gap: 3 }}><ListChecks size={12} /> {cd}/{cl}</span>}
           {t.notes && <AlignLeft size={12} />}
+          {t.tags?.map((tg) => (
+            <span key={tg} className="chip chip-xs">#{tg}</span>
+          ))}
+          {t.url && (
+            <a
+              href={t.url}
+              target="_blank"
+              rel="noreferrer"
+              className="chip chip-xs"
+              onClick={(e) => e.stopPropagation()}
+              title="Ouvrir le lien"
+            >
+              <ExternalLink size={10} />
+            </a>
+          )}
         </div>
       ) : null}
     </div>

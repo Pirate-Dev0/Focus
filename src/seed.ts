@@ -29,7 +29,20 @@ export function seed(): State {
   ];
   const byName = (n: string) => exercises.find((e) => e.name === n)!.id;
 
-  const habit = (name: string, days = [0, 1, 2, 3, 4, 5, 6]): Habit => ({ id: uid(), name, days, done: [], archived: false });
+  const habit = (
+    name: string,
+    opts: Partial<Habit> = {},
+    days = [0, 1, 2, 3, 4, 5, 6]
+  ): Habit => ({
+    id: uid(),
+    name,
+    days,
+    done: [],
+    values: {},
+    freezes: [],
+    archived: false,
+    ...opts
+  });
 
   const revna = uid(), waketap = uid(), vinted = uid(), tiktok = uid(), general = uid();
   const now = Date.now();
@@ -59,12 +72,12 @@ export function seed(): State {
       { id: uid(), projectId: revna, title: 'Page setting', notes: "Reprise de l'ancienne base Revio — Suivi tâches journalières.", status: 'todo', priority: 'p2', checklist: [], createdAt: now, order: 0 }
     ],
     habits: [
-      habit('Salle', [1, 2, 3, 4, 5]),
-      habit('Manger assez (prise de masse)'),
-      habit('Boire 2 L d’eau'),
-      habit('Deep work 2 h'),
-      habit('Lire 20 min'),
-      habit('Au lit avant minuit')
+      habit('Salle', { emoji: '🏋️', timeOfDay: 'morning' }, [1, 2, 3, 4, 5]),
+      habit('Manger assez (prise de masse)', { emoji: '🥗', timeOfDay: 'any' }),
+      habit('Boire 2 L d’eau', { emoji: '💧', kind: 'numeric', targetValue: 2, unit: 'L', step: 0.5, reminderTime: '12:00' }),
+      habit('Deep work 2 h', { emoji: '💻', kind: 'numeric', targetValue: 2, unit: 'h', step: 1, timeOfDay: 'morning' }),
+      habit('Lire 20 min', { emoji: '📚', kind: 'numeric', targetValue: 20, unit: 'min', step: 10, timeOfDay: 'evening', reminderTime: '21:30' }),
+      habit('Au lit avant minuit', { emoji: '💤', timeOfDay: 'evening', reminderTime: '23:30' })
     ],
     exercises,
     routines: [
