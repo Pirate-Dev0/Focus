@@ -133,10 +133,27 @@ function DayStrip({ day, onPick }: { day: string; onPick: (d: string) => void })
     <div className="day-strip" role="tablist">
       {days.map((d) => {
         const n = openTasksFor(s.tasks, d).length;
+        // journée bouclée : tout ce qui était prévu (habitudes + tâches) est fait
+        const habits = s.habits.filter((h) => !h.archived && habitDueOn(h, d));
+        const total = n + habits.length + s.tasks.filter((x) => doneOn(x, d)).length;
+        const achieved = habits.filter((h) => isHabitDone(h, d)).length + s.tasks.filter((x) => doneOn(x, d)).length;
+        const complete = total > 0 && achieved === total;
+        const wd = parseDate(d).toLocaleDateString('fr-FR', { weekday: 'short' }).replace('.', '');
         return (
-          <button key={d} role="tab" aria-selected={d === day} className={'ds' + (d === day ? ' on' : '') + (d === t ? ' is-today' : '')} onClick={() => onPick(d)}>
-            <span className="ds-wd">{dayShort(d)}</span>
-            <span className="ds-num">{parseDate(d).getDate()}</span>
+          <button
+            key={d}
+            role="tab"
+            aria-selected={d === day}
+            aria-label={`${dayShort(d)} ${parseDate(d).getDate()}${complete ? ', journée terminée' : n ? `, ${n} tâche${n > 1 ? 's' : ''}` : ''}`}
+            className={'ds' + (d === day ? ' on' : '') + (d === t ? ' is-today' : '') + (complete ? ' done' : '')}
+            onClick={() => onPick(d)}
+          >
+            <span className="ds-wd">{wd}</span>
+            <span className="ds-dot">
+              {complete
+                ? <svg width="14" height="14" viewBox="0 0 16 16"><path d="M3.5 8.5 6.5 11.5 12.5 5" stroke="currentColor" strokeWidth="2.6" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                : parseDate(d).getDate()}
+            </span>
             <span className="ds-dots">{Array.from({ length: Math.min(n, 3) }, (_, i) => <i key={i} />)}</span>
           </button>
         );

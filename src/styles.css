@@ -245,7 +245,7 @@ button.list-item:active { background: var(--hover); }
   .kcard:hover { border-color: var(--border-strong); }
   .add-card:hover { background: var(--hover); color: var(--text-2); }
   .habit-tile:not(.on):hover { border-color: var(--border-strong); }
-  .ds:not(.on):hover { background: var(--hover); }
+  .ds:not(.on):hover { background: color-mix(in srgb, var(--text) 8%, var(--bg)); }
 }
 
 /* Segmented */
@@ -316,16 +316,32 @@ select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csv
 .day-ring.full svg circle:first-child { stroke: var(--text); }
 .day-ring.full span { color: var(--text); }
 
-.day-strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; margin: 0 -4px 4px; }
-.ds { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 7px 0 6px; border-radius: 14px; color: var(--text-3); transition: background .18s, color .18s, transform .1s var(--ease); }
-.ds:active { transform: scale(.93); }
-.ds-wd { font-size: 11px; font-weight: 600; text-transform: capitalize; }
-.ds-num { font-size: 18px; font-weight: 650; color: var(--text); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.25; }
-.ds-dots { display: flex; gap: 3px; height: 5px; align-items: center; }
+.day-strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin: 0 0 6px; }
+/* Bande des jours : pilules hautes, jour en haut, rond en bas */
+.ds {
+  display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 10px 0 7px; border-radius: 99px;
+  background: color-mix(in srgb, var(--text) 7%, var(--bg)); color: var(--text-3);
+  transition: background .18s, box-shadow .18s, transform .1s var(--ease);
+}
+.ds:active { transform: scale(.94); }
+.ds-wd { font-size: 12px; font-weight: 600; text-transform: capitalize; letter-spacing: .01em; }
+.ds-dot {
+  width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; box-sizing: border-box;
+  border: 2px solid var(--border-strong); color: var(--text-2);
+  font-size: 13px; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
+  transition: background .2s, border-color .2s, color .2s;
+}
+.ds-dots { display: flex; gap: 3px; height: 4px; align-items: center; color: var(--text-3); }
 .ds-dots i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
-.ds.is-today:not(.on) { color: var(--text); box-shadow: inset 0 0 0 1px var(--border-strong); }
-.ds.on { background: var(--accent); color: var(--accent-text); }
-.ds.on .ds-num { color: var(--accent-text); }
+/* Aujourd'hui : anneau jaune épais, centre blanc */
+.ds.is-today .ds-dot { border: 6px solid #fbbf24; background: #fff; color: #18181b; font-size: 11.5px; font-weight: 750; }
+/* Journée bouclée : rond plein + coche */
+.ds.done .ds-dot { border-color: var(--accent); background: var(--accent); color: var(--accent-text); animation: tick .3s var(--ease); }
+.ds.done.is-today .ds-dot { box-shadow: 0 0 0 2.5px #fbbf24; border-width: 2px; }
+/* Jour sélectionné */
+.ds.on { background: color-mix(in srgb, var(--text) 11%, var(--bg)); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--text) 22%, transparent); }
+.ds.on .ds-wd { color: var(--text); }
+.ds.on:not(.done):not(.is-today) .ds-dot { border-color: var(--text-2); color: var(--text); }
 
 .home-section .section-title { font-size: 15px; font-weight: 650; color: var(--text); margin: 22px 2px 10px; letter-spacing: -0.01em; }
 .sub-label { display: flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--text-3); margin: 0 4px 6px; }
@@ -830,7 +846,9 @@ button:disabled { cursor: default; }
 @media (max-width: 380px) {
   .week-grid { grid-template-columns: minmax(0, 1fr) repeat(7, 31px); }
   .wcell { width: 26px; height: 26px; }
-  .ds-num { font-size: 16px; }
+  .day-strip { gap: 4px; }
+  .ds-dot { width: 28px; height: 28px; font-size: 12px; }
+  .ds.is-today .ds-dot { border-width: 5px; font-size: 10.5px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
