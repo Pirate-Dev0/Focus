@@ -14,15 +14,15 @@ function lockScroll(on: boolean) {
 }
 const isDesktop = () => window.matchMedia('(min-width: 900px)').matches;
 
-export function Sheet({ open, onClose, title, children, full, actions }: { open: boolean; onClose: () => void; title?: ReactNode; children: ReactNode; full?: boolean; actions?: ReactNode }) {
+export function Sheet({ open, onClose, title, children, full, actions, footer }: { open: boolean; onClose: () => void; title?: ReactNode; children: ReactNode; full?: boolean; actions?: ReactNode; footer?: ReactNode }) {
   const [mounted, setMounted] = useState(open);
   const [closing, setClosing] = useState(false);
   const internal = useRef(false);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   // garde le dernier contenu pour l'animation de sortie
-  const last = useRef({ title, children, actions });
-  if (open) last.current = { title, children, actions };
+  const last = useRef({ title, children, actions, footer });
+  if (open) last.current = { title, children, actions, footer };
   const sheetRef = useRef<HTMLDivElement>(null);
   const backRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -121,7 +121,7 @@ export function Sheet({ open, onClose, title, children, full, actions }: { open:
   }, [mounted, requestClose]);
 
   if (!mounted) return null;
-  const c = open ? { title, children, actions } : last.current;
+  const c = open ? { title, children, actions, footer } : last.current;
   return createPortal(
     <SheetCtx.Provider value={requestClose}>
       <div ref={backRef} className={'sheet-backdrop' + (closing ? ' closing' : '')} onClick={requestClose} />
@@ -134,7 +134,8 @@ export function Sheet({ open, onClose, title, children, full, actions }: { open:
             <button className="icon-btn" onClick={requestClose} aria-label="Fermer"><X size={18} /></button>
           </div>
         </div>
-        <div ref={bodyRef} className="sheet-body">{c.children}</div>
+        <div ref={bodyRef} className={'sheet-body' + (c.footer ? ' has-foot' : '')}>{c.children}</div>
+        {c.footer && <div className="sheet-foot">{c.footer}</div>}
       </div>
     </SheetCtx.Provider>,
     document.body

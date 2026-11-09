@@ -1,8 +1,8 @@
 import { useEffect, useState, type CSSProperties } from 'react';
-import { BarChart3, Bell, Check, ChevronRight, Clock, Flame, Minus, Plus, Snowflake, Sparkles, Trash2 } from 'lucide-react';
+import { BarChart3, Bell, Check, ChevronRight, Clock, Flame, Hash, Minus, Moon, Plus, Snowflake, Sun, Sunrise, Trash2 } from 'lucide-react';
 import { update, useAppState } from '../store';
 import { go } from '../router';
-import { Field, Segmented, Sheet, Empty, toast } from '../components/ui';
+import { ChipScroll, NumInput, Segmented, Sheet, Empty, toast } from '../components/ui';
 import type { Habit, HabitFrequencyType, HabitKind, TimeOfDay } from '../types';
 import { addDays, DAYS_SHORT, habitDueOn, habitStreak, haptic, isHabitDone, parseDate, today, uid } from '../utils';
 import { setHabitProgress, toggleHabitFreeze } from '../actions';
@@ -352,9 +352,9 @@ function HabitSheet({ habit, defaultColor, onClose }: { habit: Habit | 'new' | n
         frequencyType: freqType,
         timesPerWeek: freqType === 'times_per_week' ? timesPerWeek : undefined,
         kind,
-        targetValue: kind === 'numeric' ? targetValue : undefined,
+        targetValue: kind === 'numeric' ? (targetValue > 0 ? targetValue : 1) : undefined,
         unit: kind === 'numeric' ? unit.trim() : undefined,
-        step: kind === 'numeric' ? step : undefined,
+        step: kind === 'numeric' ? (step > 0 ? step : 1) : undefined,
         timeOfDay,
         reminderTime: reminderTime || undefined,
         streakGoal: streakGoal || undefined
@@ -386,6 +386,24 @@ function HabitSheet({ habit, defaultColor, onClose }: { habit: Habit | 'new' | n
   };
 
   const order = [1, 2, 3, 4, 5, 6, 0];
+  const sameDays = (a: number[]) => a.length === days.length && a.every((d) => days.includes(d));
+  const DAY_PRESETS = [
+    { l: 'Tous les jours', v: [0, 1, 2, 3, 4, 5, 6] },
+    { l: 'En semaine', v: [1, 2, 3, 4, 5] },
+    { l: 'Week-end', v: [0, 6] }
+  ];
+  const MOMENTS: { id: TimeOfDay; l: string; icon: typeof Sun }[] = [
+    { id: 'any', l: 'Libre', icon: Clock },
+    { id: 'morning', l: 'Matin', icon: Sunrise },
+    { id: 'afternoon', l: 'Après-midi', icon: Sun },
+    { id: 'evening', l: 'Soir', icon: Moon }
+  ];
+  const freqLabel = freqType === 'times_per_week'
+    ? `${timesPerWeek}× par semaine`
+    : DAY_PRESETS.find((p) => sameDays(p.v))?.l ?? `${days.length} jour${days.length > 1 ? 's' : ''} / semaine`;
+  const momentLabel = timeOfDay === 'any' ? '' : MOMENTS.find((m) => m.id === timeOfDay)?.l.toLowerCase();
+  const summary = [freqLabel, momentLabel && `le ${momentLabel}`, reminderTime && `rappel ${reminderTime}`].filter(Boolean).join(' · ');
+  const canSave = Boolean(name.trim()) && (freqType !== 'days' || days.length > 0);
 
   return (
     <Sheet
@@ -408,263 +426,226 @@ function HabitSheet({ habit, defaultColor, onClose }: { habit: Habit | 'new' | n
           <Trash2 size={16} />
         </button>
       )}
+      footer={
+        <button className="btn btn-primary btn-lg btn-block" disabled={!canSave} onClick={save}>
+          {isNew ? 'Ajouter l’habitude' : 'Enregistrer'}
+        </button>
+      }
     >
-      <Field label="Habitude & Émoji">
-        <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+      <div className="hs" style={{ '--c': color } as CSSProperties}>
+        {/* Aperçu : icône + nom + résumé */}
+        <div className="hs-hero">
           <input
-            className="input"
-            style={{ width: 48, height: 40, textAlign: 'center', fontSize: 18, padding: 0 }}
+            className="hs-emoji"
+            aria-label="Émoji"
             value={emoji}
             onChange={(e) => setEmoji(e.target.value)}
           />
-          <input
-            className="input grow"
-            autoFocus
-            placeholder="Ex : Boire 2 L d'eau, Lire 20 min…"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && save()}
-          />
-        </div>
-        <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
-          {EMOJI_PRESETS.map((em) => (
-            <button
-              key={em}
-              type="button"
-              className={'chip' + (emoji === em ? ' solid' : '')}
-              style={{ fontSize: 14, padding: '0 8px' }}
-              onClick={() => setEmoji(em)}
-            >
-              {em}
-            </button>
-          ))}
-        </div>
-      </Field>
-
-      <Field label="Couleur">
-        <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
-          {HABIT_COLORS.map((c) => (
-            <button
-              key={c}
-              type="button"
-              aria-label={c}
-              className={'hb-swatch' + (color === c ? ' on' : '')}
-              style={{ '--c': c } as CSSProperties}
-              onClick={() => setColor(c)}
+          <div className="hs-hero-main">
+            <input
+              className="hs-name"
+              autoFocus={isNew}
+              placeholder="Nom de l’habitude"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && save()}
             />
-          ))}
-        </div>
-      </Field>
-
-      <Field label="Moment de la journée">
-        <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
-          {[
-            { id: 'any', l: 'Tout moment' },
-            { id: 'morning', l: 'Matin ☀️' },
-            { id: 'afternoon', l: 'Après-midi 🌤️' },
-            { id: 'evening', l: 'Soir 🌙' }
-          ].map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              className={'chip chip-lg' + (timeOfDay === m.id ? ' solid' : '')}
-              onClick={() => setTimeOfDay(m.id as TimeOfDay)}
-            >
-              {m.l}
-            </button>
-          ))}
-        </div>
-      </Field>
-
-      <Field label="Alarme & Rappel personnalisé">
-        <div className="row" style={{ flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-          <input
-            type="time"
-            className="input"
-            style={{ width: 115, height: 34 }}
-            value={reminderTime}
-            onChange={(e) => setReminderTime(e.target.value)}
-          />
-          {['07:30', '08:30', '12:30', '18:00', '21:00', '22:30'].map((time) => (
-            <button
-              key={time}
-              type="button"
-              className={'chip' + (reminderTime === time ? ' solid' : '')}
-              onClick={() => setReminderTime(reminderTime === time ? '' : time)}
-            >
-              <Bell size={10} /> {time}
-            </button>
-          ))}
-          {reminderTime && (
-            <button type="button" className="btn btn-ghost small" onClick={() => setReminderTime('')}>Effacer</button>
-          )}
-        </div>
-      </Field>
-
-      <Field label="Type d'objectif">
-        <div className="row" style={{ gap: 8, marginBottom: 8 }}>
-          <button
-            type="button"
-            className={'chip chip-lg grow' + (kind === 'boolean' ? ' solid' : '')}
-            style={{ justifyContent: 'center' }}
-            onClick={() => setKind('boolean')}
-          >
-            ✓ Coche simple (Oui / Non)
-          </button>
-          <button
-            type="button"
-            className={'chip chip-lg grow' + (kind === 'numeric' ? ' solid' : '')}
-            style={{ justifyContent: 'center' }}
-            onClick={() => setKind('numeric')}
-          >
-            🔢 Quantitatif (Chiffré)
-          </button>
-        </div>
-
-        {kind === 'numeric' && (
-          <div className="card" style={{ padding: 12, background: 'var(--bg-elev)', marginTop: 8 }}>
-            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-              <div style={{ flex: 1, minWidth: 90 }}>
-                <span className="faint small" style={{ display: 'block', marginBottom: 4 }}>Cible :</span>
-                <input
-                  type="number"
-                  step="any"
-                  className="input"
-                  style={{ width: '100%', height: 34 }}
-                  value={targetValue}
-                  onChange={(e) => setTargetValue(Number(e.target.value) || 1)}
-                />
-              </div>
-              <div style={{ flex: 1, minWidth: 90 }}>
-                <span className="faint small" style={{ display: 'block', marginBottom: 4 }}>Unité :</span>
-                <input
-                  className="input"
-                  style={{ width: '100%', height: 34 }}
-                  placeholder="L, pages, pas…"
-                  value={unit}
-                  onChange={(e) => setUnit(e.target.value)}
-                />
-              </div>
-              <div style={{ flex: 1, minWidth: 90 }}>
-                <span className="faint small" style={{ display: 'block', marginBottom: 4 }}>Pas (+ / tap) :</span>
-                <input
-                  type="number"
-                  step="any"
-                  className="input"
-                  style={{ width: '100%', height: 34 }}
-                  value={step}
-                  onChange={(e) => setStep(Number(e.target.value) || 1)}
-                />
-              </div>
-            </div>
+            <div className="hs-summary">{summary}</div>
           </div>
-        )}
-      </Field>
-
-      <Field label="Fréquence">
-        <div className="row" style={{ gap: 8, marginBottom: 10 }}>
-          <button
-            type="button"
-            className={'chip chip-lg grow' + (freqType === 'days' ? ' solid' : '')}
-            style={{ justifyContent: 'center' }}
-            onClick={() => setFreqType('days')}
-          >
-            Jours précis
-          </button>
-          <button
-            type="button"
-            className={'chip chip-lg grow' + (freqType === 'times_per_week' ? ' solid' : '')}
-            style={{ justifyContent: 'center' }}
-            onClick={() => setFreqType('times_per_week')}
-          >
-            X fois / semaine
-          </button>
         </div>
 
-        {freqType === 'days' ? (
-          <>
-            <div className="row" style={{ gap: 6, marginBottom: 8 }}>
-              {order.map((d) => (
-                <button
-                  key={d}
-                  type="button"
-                  className={'chip' + (days.includes(d) ? ' solid' : '')}
-                  style={{ width: 38, height: 34, justifyContent: 'center' }}
-                  onClick={() => setDays(days.includes(d) ? days.filter((x) => x !== d) : [...days, d])}
-                >
-                  {DAYS_SHORT[d]}
-                </button>
-              ))}
-            </div>
-            <div className="row" style={{ gap: 6 }}>
-              <button type="button" className="btn btn-ghost small" onClick={() => setDays([0, 1, 2, 3, 4, 5, 6])}>Tous les jours</button>
-              <button type="button" className="btn btn-ghost small" onClick={() => setDays([1, 2, 3, 4, 5])}>Semaine</button>
-              <button type="button" className="btn btn-ghost small" onClick={() => setDays([0, 6])}>Week-end</button>
-            </div>
-          </>
-        ) : (
-          <div className="row" style={{ gap: 8, alignItems: 'center' }}>
-            <span className="faint small">Objectif de :</span>
-            {[2, 3, 4, 5, 6].map((n) => (
-              <button
-                key={n}
-                type="button"
-                className={'chip' + (timesPerWeek === n ? ' solid' : '')}
-                onClick={() => setTimesPerWeek(n)}
-              >
-                {n} j / sem
+        <section className="hs-sec">
+          <div className="hs-label">Icône</div>
+          <div className="hs-emojis">
+            {EMOJI_PRESETS.map((em) => (
+              <button key={em} type="button" className={'hs-emo' + (emoji === em ? ' on' : '')} onClick={() => setEmoji(em)}>
+                {em}
               </button>
             ))}
           </div>
-        )}
-      </Field>
+        </section>
 
-      <Field label="Objectif de série (Streak)">
-        <div className="row" style={{ flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-          <button
-            type="button"
-            className={'chip' + (!streakGoal ? ' solid' : '')}
-            onClick={() => setStreakGoal(undefined)}
-          >
-            Sans palier
-          </button>
-          {[7, 14, 21, 30, 60, 100].map((goal) => (
-            <button
-              key={goal}
-              type="button"
-              className={'chip' + (streakGoal === goal ? ' solid' : '')}
-              onClick={() => setStreakGoal(goal)}
-            >
-              <Sparkles size={11} /> {goal} jours
-            </button>
-          ))}
-        </div>
-      </Field>
-
-      {!isNew && currentHabit && (
-        <Field label="Joker de série (Streak freeze)">
-          <div className="row-between" style={{ background: 'var(--bg-elev)', padding: '10px 12px', borderRadius: 10 }}>
-            <div>
-              <div style={{ fontWeight: 550, fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}>
-                <Snowflake size={13} color="#38bdf8" /> Joker pour aujourd’hui
-              </div>
-              <div className="faint small">Protège ta flamme 🔥 si tu ne peux pas faire cette habitude.</div>
-            </div>
-            <button
-              type="button"
-              className={'btn ' + (currentHabit.freezes?.includes(t) ? 'btn-primary' : 'btn-ghost')}
-              style={{ fontSize: 12, height: 32 }}
-              onClick={handleUseFreezeToday}
-            >
-              {currentHabit.freezes?.includes(t) ? 'Joker actif ✓' : 'Activer'}
-            </button>
+        <section className="hs-sec">
+          <div className="hs-label">Couleur</div>
+          <div className="hs-colors">
+            {HABIT_COLORS.map((c) => (
+              <button
+                key={c}
+                type="button"
+                aria-label={c}
+                className={'hb-swatch' + (color === c ? ' on' : '')}
+                style={{ '--c': c } as CSSProperties}
+                onClick={() => setColor(c)}
+              />
+            ))}
           </div>
-        </Field>
-      )}
+        </section>
 
-      <button className="btn btn-primary btn-lg btn-block" style={{ marginTop: 16 }} onClick={save}>
-        {isNew ? 'Ajouter l’habitude' : 'Enregistrer les modifications'}
-      </button>
+        <section className="hs-sec">
+          <div className="hs-label">Objectif</div>
+          <Segmented
+            full
+            value={kind}
+            onChange={setKind}
+            options={[
+              { value: 'boolean', label: <><Check size={14} /> Oui / Non</> },
+              { value: 'numeric', label: <><Hash size={14} /> Quantité</> }
+            ]}
+          />
+          <div className="hs-hint">
+            {kind === 'boolean' ? 'Une simple case à cocher chaque jour.' : 'Tu ajoutes une quantité jusqu’à atteindre ta cible.'}
+          </div>
+          {kind === 'numeric' && (
+            <div className="hs-grid3">
+              <label className="hs-mini">
+                <span>Cible</span>
+                <NumInput value={targetValue} onChange={setTargetValue} placeholder="2" />
+              </label>
+              <label className="hs-mini">
+                <span>Unité</span>
+                <input className="input" placeholder="L, pages…" value={unit} onChange={(e) => setUnit(e.target.value)} />
+              </label>
+              <label className="hs-mini">
+                <span>Par appui</span>
+                <NumInput value={step} onChange={setStep} placeholder="0,5" />
+              </label>
+            </div>
+          )}
+        </section>
+
+        <section className="hs-sec">
+          <div className="hs-label">Fréquence</div>
+          <Segmented
+            full
+            value={freqType}
+            onChange={setFreqType}
+            options={[
+              { value: 'days', label: 'Jours précis' },
+              { value: 'times_per_week', label: 'X fois / sem.' }
+            ]}
+          />
+          {freqType === 'days' ? (
+            <>
+              <div className="hs-days">
+                {order.map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    className={'hs-day' + (days.includes(d) ? ' on' : '')}
+                    onClick={() => setDays(days.includes(d) ? days.filter((x) => x !== d) : [...days, d])}
+                  >
+                    {DAYS_SHORT[d]}
+                  </button>
+                ))}
+              </div>
+              <div className="hs-presets">
+                {DAY_PRESETS.map((p) => (
+                  <button key={p.l} type="button" className={'hs-preset' + (sameDays(p.v) ? ' on' : '')} onClick={() => setDays(p.v)}>
+                    {p.l}
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="hs-days five">
+                {[2, 3, 4, 5, 6].map((n) => (
+                  <button key={n} type="button" className={'hs-day' + (timesPerWeek === n ? ' on' : '')} onClick={() => setTimesPerWeek(n)}>
+                    {n}
+                  </button>
+                ))}
+              </div>
+              <div className="hs-hint center">fois par semaine, les jours que tu veux</div>
+            </>
+          )}
+        </section>
+
+        <section className="hs-sec">
+          <div className="hs-label">Moment de la journée</div>
+          <div className="hs-moments">
+            {MOMENTS.map(({ id, l, icon: Icon }) => (
+              <button key={id} type="button" className={'hs-moment' + (timeOfDay === id ? ' on' : '')} onClick={() => setTimeOfDay(id)}>
+                <Icon size={18} />
+                <span>{l}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="hs-sec">
+          <div className="hs-label">Rappel</div>
+          <div className="hs-card">
+            <div className="hs-row">
+              <span className="hs-row-icon"><Bell size={16} /></span>
+              <div className="hs-row-text">
+                <b>Notification</b>
+                <span>{reminderTime ? `Chaque jour prévu à ${reminderTime}` : 'Désactivée'}</span>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={Boolean(reminderTime)}
+                aria-label="Activer le rappel"
+                className={'hs-switch' + (reminderTime ? ' on' : '')}
+                onClick={() => setReminderTime(reminderTime ? '' : '08:30')}
+              >
+                <span className="hs-switch-knob" />
+              </button>
+            </div>
+            {reminderTime && (
+              <div className="hs-card-more">
+                <div className="hs-row">
+                  <span className="hs-row-text"><b>Heure</b></span>
+                  <input type="time" className="input hs-time" value={reminderTime} onChange={(e) => setReminderTime(e.target.value)} />
+                </div>
+                <ChipScroll>
+                  {['07:30', '08:30', '12:30', '18:00', '21:00', '22:30'].map((time) => (
+                    <button key={time} type="button" className={'hs-pill' + (reminderTime === time ? ' solid on' : '')} onClick={() => setReminderTime(time)}>
+                      {time}
+                    </button>
+                  ))}
+                </ChipScroll>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="hs-sec">
+          <div className="hs-label">Objectif de série</div>
+          <ChipScroll>
+            <button type="button" className={'hs-pill' + (!streakGoal ? ' solid on' : '')} onClick={() => setStreakGoal(undefined)}>
+              Aucun
+            </button>
+            {[7, 14, 21, 30, 60, 100].map((goal) => (
+              <button key={goal} type="button" className={'hs-pill' + (streakGoal === goal ? ' solid on' : '')} onClick={() => setStreakGoal(goal)}>
+                <Flame size={13} /> {goal} jours
+              </button>
+            ))}
+          </ChipScroll>
+        </section>
+
+        {!isNew && currentHabit && (
+          <section className="hs-sec">
+            <div className="hs-label">Joker de série</div>
+            <div className="hs-card">
+              <div className="hs-row">
+                <span className="hs-row-icon ice"><Snowflake size={16} /></span>
+                <div className="hs-row-text">
+                  <b>Joker pour aujourd’hui</b>
+                  <span>Garde ta série si tu ne peux pas la faire.</span>
+                </div>
+                <button
+                  type="button"
+                  className={'btn small ' + (currentHabit.freezes?.includes(t) ? 'btn-primary' : 'btn-ghost')}
+                  onClick={handleUseFreezeToday}
+                >
+                  {currentHabit.freezes?.includes(t) ? 'Actif ✓' : 'Activer'}
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
+      </div>
     </Sheet>
   );
 }
