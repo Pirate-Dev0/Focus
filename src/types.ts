@@ -68,6 +68,7 @@ export interface Habit {
   id: string;
   name: string;
   emoji?: string;
+  icon?: string; // nom d'une icône Lucide (prioritaire sur l'emoji)
   color?: string;
   days: number[]; // 0 = dimanche
   frequencyType?: HabitFrequencyType;

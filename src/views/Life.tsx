@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties } from 'react';
-import { BarChart3, Bell, Check, ChevronDown, ChevronRight, Clock, Flame, Hash, Minus, Moon, Plus, Snowflake, Sun, Sunrise, Trash2 } from 'lucide-react';
+import { BarChart3, Bell, Check, ChevronDown, ChevronRight, Clock, Flame, Hash, Minus, Moon, Plus, Search, Shapes, Snowflake, Sun, Sunrise, Trash2, X } from 'lucide-react';
+import { HABIT_ICONS, HabitGlyph, ICON_BY_NAME, ICON_CATS, habitGlyphKind, searchIcons, type IconCat } from '../components/habitIcons';
 import { update, useAppState } from '../store';
 import { go } from '../router';
 import { ChipScroll, NumInput, Segmented, Sheet, Empty, toast } from '../components/ui';
@@ -224,7 +225,7 @@ function HabitCard({ h, color, t, onEdit }: { h: Habit; color: string; t: string
 
         <div className="hb-side">
           <button className="hb-name" onClick={onEdit}>
-            {h.emoji && <span className="em">{h.emoji}</span>}
+            {habitGlyphKind(h) !== 'letter' && <span className="em" style={{ color }}><HabitGlyph h={h} size={16} /></span>}
             <span className="ellipsis">{h.name}</span>
           </button>
           {(streak > 0 || h.reminderTime || perWeek) && (
@@ -310,15 +311,23 @@ function HabitSheet({ habit, defaultColor, onClose }: { habit: Habit | 'new' | n
   const [streakGoal, setStreakGoal] = useState<number | undefined>(undefined);
   const [key, setKey] = useState<string | null>(null);
   const [moreColors, setMoreColors] = useState(false);
+  const [iconMode, setIconMode] = useState(false);
+  const [iconName, setIconName] = useState('');
+  const [iconQuery, setIconQuery] = useState('');
+  const [iconCat, setIconCat] = useState<IconCat | 'all'>('all');
 
   const k = habit === null ? null : isNew ? 'new' : habit.id;
   if (k !== key) {
     setKey(k);
+    setIconQuery('');
+    setIconCat('all');
     if (habit && habit !== 'new') {
       setName(habit.name);
       setEmoji(habit.emoji || '💧');
       setColor(habit.color || defaultColor);
       setMoreColors(!!habit.color && !HABIT_COLORS.includes(habit.color));
+      setIconMode(habitGlyphKind(habit) === 'icon');
+      setIconName(habit.icon || '');
       setDays(habit.days || [0, 1, 2, 3, 4, 5, 6]);
       setFreqType(habit.frequencyType || 'days');
       setTimesPerWeek(habit.timesPerWeek || 3);
@@ -334,6 +343,8 @@ function HabitSheet({ habit, defaultColor, onClose }: { habit: Habit | 'new' | n
       setEmoji('💧');
       setColor(defaultColor);
       setMoreColors(false);
+      setIconMode(false);
+      setIconName('');
       setDays([0, 1, 2, 3, 4, 5, 6]);
       setFreqType('days');
       setTimesPerWeek(3);
@@ -355,6 +366,7 @@ function HabitSheet({ habit, defaultColor, onClose }: { habit: Habit | 'new' | n
       const payload = {
         name: name.trim(),
         emoji,
+        icon: iconMode && ICON_BY_NAME.has(iconName) ? iconName : undefined,
         color,
         days,
         frequencyType: freqType,
@@ -413,6 +425,17 @@ function HabitSheet({ habit, defaultColor, onClose }: { habit: Habit | 'new' | n
   const summary = [freqLabel, momentLabel && `le ${momentLabel}`, reminderTime && `rappel ${reminderTime}`].filter(Boolean).join(' · ');
   const canSave = Boolean(name.trim()) && (freqType !== 'days' || days.length > 0);
 
+  // Galerie d'icônes : recherche sur tout le catalogue, sinon filtre par catégorie
+  const HeroIcon = iconMode ? ICON_BY_NAME.get(iconName) : undefined;
+  const iconList = iconQuery.trim()
+    ? searchIcons(iconQuery)
+    : iconCat === 'all' ? HABIT_ICONS : HABIT_ICONS.filter((e) => e.cat === iconCat);
+  const iconSuggestions = !iconQuery.trim() && iconCat === 'all' ? searchIcons(name, 'any').slice(0, 7) : [];
+  const switchIconMode = (v: 'emoji' | 'icon') => {
+    setIconMode(v === 'icon');
+    if (v === 'icon' && !ICON_BY_NAME.has(iconName)) setIconName(searchIcons(name, 'any')[0]?.name || 'Target');
+  };
+
   return (
     <Sheet
       open
@@ -443,12 +466,18 @@ function HabitSheet({ habit, defaultColor, onClose }: { habit: Habit | 'new' | n
       <div className="hs" style={{ '--c': color } as CSSProperties}>
         {/* Aperçu : icône + nom + résumé */}
         <div className="hs-hero">
-          <input
-            className="hs-emoji"
-            aria-label="Émoji"
-            value={emoji}
-            onChange={(e) => setEmoji(e.target.value)}
-          />
+          {iconMode ? (
+            <span className="hs-emoji hs-glyph" aria-label="Icône choisie">
+              {HeroIcon && <HeroIcon size={30} strokeWidth={2.1} />}
+            </span>
+          ) : (
+            <input
+              className="hs-emoji"
+              aria-label="Émoji"
+              value={emoji}
+              onChange={(e) => setEmoji(e.target.value)}
+            />
+          )}
           <div className="hs-hero-main">
             <input
               className="hs-name"
@@ -464,13 +493,91 @@ function HabitSheet({ habit, defaultColor, onClose }: { habit: Habit | 'new' | n
 
         <section className="hs-sec">
           <div className="hs-label">Icône</div>
-          <div className="hs-emojis">
-            {EMOJI_PRESETS.map((em) => (
-              <button key={em} type="button" className={'hs-emo' + (emoji === em ? ' on' : '')} onClick={() => setEmoji(em)}>
-                {em}
-              </button>
-            ))}
-          </div>
+          <Segmented
+            full
+            value={iconMode ? 'icon' : 'emoji'}
+            onChange={switchIconMode}
+            options={[
+              { value: 'emoji', label: 'Emoji' },
+              { value: 'icon', label: <><Shapes size={14} /> Icônes</> },
+            ]}
+          />
+          {!iconMode ? (
+            <div className="hs-emojis" style={{ marginTop: 12 }}>
+              {EMOJI_PRESETS.map((em) => (
+                <button key={em} type="button" className={'hs-emo' + (emoji === em ? ' on' : '')} onClick={() => setEmoji(em)}>
+                  {em}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="hs-ipick">
+              <div className="hs-isearch">
+                <Search size={16} />
+                <input
+                  type="search"
+                  inputMode="search"
+                  enterKeyHint="search"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  placeholder="Rechercher : eau, sport, lire, dormir…"
+                  value={iconQuery}
+                  onChange={(e) => setIconQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
+                />
+                {iconQuery && (
+                  <button type="button" aria-label="Effacer la recherche" onClick={() => setIconQuery('')}>
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+
+              {!iconQuery.trim() && (
+                <ChipScroll>
+                  {[{ id: 'all' as const, label: 'Tout' }, ...ICON_CATS].map((c) => (
+                    <button key={c.id} type="button" className={'hs-pill' + (iconCat === c.id ? ' solid on' : '')} onClick={() => setIconCat(c.id)}>
+                      {c.label}
+                    </button>
+                  ))}
+                </ChipScroll>
+              )}
+
+              {iconSuggestions.length > 0 && (
+                <>
+                  <div className="hs-imeta">Suggérées pour « {name.trim()} »</div>
+                  <div className="hs-icons hs-icons-sugg">
+                    {iconSuggestions.map((e) => (
+                      <button key={e.name} type="button" aria-label={e.label} className={'hs-ico' + (iconName === e.name ? ' on' : '')} onClick={() => setIconName(e.name)}>
+                        <e.Icon size={22} />
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              <div className="hs-imeta">
+                {iconQuery.trim()
+                  ? iconList.length ? `${iconList.length} résultat${iconList.length > 1 ? 's' : ''}` : ''
+                  : `${iconList.length} icônes`}
+              </div>
+              <div className="hs-iscroll" data-nodrag>
+                {iconList.length ? (
+                  <div className="hs-icons">
+                    {iconList.map((e) => (
+                      <button key={e.name} type="button" aria-label={e.label} title={e.label} className={'hs-ico' + (iconName === e.name ? ' on' : '')} onClick={() => setIconName(e.name)}>
+                        <e.Icon size={22} />
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="hs-iempty">
+                    Aucune icône pour « {iconQuery.trim()} ».<br />Essaie un autre mot : sport, eau, livre, argent…
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </section>
 
         <section className="hs-sec">

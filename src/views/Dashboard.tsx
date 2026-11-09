@@ -5,6 +5,7 @@ import { go } from '../router';
 import { Field, NumInput, Progress, Sheet, Sparkline } from '../components/ui';
 import { TaskSheet } from '../components/TaskSheet';
 import { TaskRow } from '../components/TaskRow';
+import { HabitGlyph, habitGlyphKind } from '../components/habitIcons';
 import { SyncBadge } from '../App';
 import { isConnected } from '../sync';
 import { addTaskFromText, moveTasksTo, setHabitProgress } from '../actions';
@@ -321,7 +322,7 @@ function HabitsSection({ day }: { day: string }) {
               tabIndex={0}
               aria-pressed={on}
             >
-              <span className={'ht-emoji' + (h.emoji ? '' : ' letter')}>{h.emoji || h.name.trim().charAt(0).toUpperCase()}</span>
+              <span className={'ht-emoji ' + habitGlyphKind(h)}><HabitGlyph h={h} size={21} /></span>
 
               <div className="ht-main">
                 <div className="ht-name">{h.name}</div>
