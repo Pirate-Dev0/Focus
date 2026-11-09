@@ -39,13 +39,25 @@ const PRESET_APPS: { name: string; category: AiService['category']; unit: AiServ
   { name: 'Mistral AI', category: 'llm', unit: 'tokens', icon: 'brain', color: '#ec4899', plan: 'Le Plateforme', defaultLimit: 1000000 }
 ];
 
+const ago = (t?: number) => {
+  if (!t) return 'jamais';
+  const m = Math.round((Date.now() - t) / 6e4);
+  if (m < 1) return "à l'instant";
+  if (m < 60) return `il y a ${m} min`;
+  const h = Math.round(m / 60);
+  return h < 48 ? `il y a ${h} h` : `il y a ${Math.round(h / 24)} j`;
+};
+
 export default function Dev() {
   const state = useAppState();
   const dev = state.dev;
   const bridgeOnline = useBridgeStatus();
   const live = useLiveUsage();
   // Services dont les vrais chiffres arrivent tout seuls (usage.json, GitHub Action horaire)
-  const liveFor = (srv: AiService): LiveService | undefined => (/eleven/i.test(srv.name) ? live?.services?.elevenlabs : undefined);
+  const liveFor = (srv: AiService): LiveService | undefined => {
+    const key = /eleven/i.test(srv.name) ? 'elevenlabs' : /antigravity/i.test(srv.name) ? 'antigravity' : /claude|anthropic/i.test(srv.name) ? 'claude' : null;
+    return key ? live?.services?.[key] : undefined;
+  };
   const refreshLive = async () => {
     haptic();
     try {
@@ -554,6 +566,8 @@ export default function Dev() {
         {services.map((srv) => {
           const lv = liveFor(srv);
           const isLive = Boolean(lv && lv.used != null);
+          const isPercent = isLive && lv!.unit === 'percent';
+          const macAge = lv?.source === 'mac' ? Date.now() - (lv.seenAt || lv.fetchedAt || 0) : 0;
           const used = isLive ? lv!.used! : srv.used;
           const limit = isLive ? lv!.limit ?? undefined : srv.limit;
           const unit = isLive ? (lv!.unit as AiServiceUnit) || 'credits' : srv.unit;
@@ -612,13 +626,19 @@ export default function Dev() {
               {/* Jauge d'utilisation */}
               <div className="dev-gauge-box">
                 <div className="row-between small" style={{ marginBottom: 4 }}>
+                  {isPercent ? (
+                    <span className="mono">
+                      <b>{used} %</b> <span className="faint">du quota utilisé</span>
+                    </span>
+                  ) : (
                   <span className="mono">
                     <b>{fmtInt(used)}</b>{' '}
                     <span className="faint">
                       {hasLimit ? `/ ${fmtInt(limit!)} ${unitLabel}` : unitLabel}
                     </span>
                   </span>
-                  {hasLimit && (
+                  )}
+                  {hasLimit && !isPercent && (
                     <span className={'mono small' + (isNearLimit ? ' danger-text' : ' faint')}>
                       {pct}%
                     </span>
@@ -652,17 +672,34 @@ export default function Dev() {
 
               {srv.notes && <p className="dev-service-notes">{srv.notes}</p>}
 
+              {lv?.details && lv.details.length > 0 && (
+                <div className="dev-live-details">
+                  {lv.details.map((d) => (
+                    <div key={d.label} className="row-between small">
+                      <span className="faint ellipsis">{d.label}</span>
+                      <span className="mono">{d.value}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {lv ? (
                 <div className="dev-live row-between small" style={{ marginTop: 12 }}>
                   <span className="row" style={{ gap: 6, minWidth: 0 }}>
-                    <span className={'status-dot' + (lv.error ? ' error' : ' online')} />
+                    <span className={'status-dot' + (lv.error ? ' error' : macAge > 3 * 36e5 ? '' : ' online')} />
                     <span className={lv.error ? 'danger-text ellipsis' : 'faint ellipsis'}>
-                      {lv.error ? `Synchro auto : ${lv.error}` : 'Synchro auto · chaque heure'}
+                      {lv.error
+                        ? `Synchro auto : ${lv.error}`
+                        : lv.source === 'mac'
+                        ? `Depuis ton Mac · ${ago(lv.seenAt || lv.fetchedAt)}`
+                        : 'Synchro auto · chaque heure'}
                     </span>
                   </span>
-                  <button type="button" className="btn btn-ghost small dev-chip-btn" onClick={refreshLive}>
-                    <RefreshCw size={11} /> Actualiser
-                  </button>
+                  {lv.source !== 'mac' && (
+                    <button type="button" className="btn btn-ghost small dev-chip-btn" onClick={refreshLive}>
+                      <RefreshCw size={11} /> Actualiser
+                    </button>
+                  )}
                 </div>
               ) : (
               /* Raccourcis d'incrément rapide */

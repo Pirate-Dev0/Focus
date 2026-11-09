@@ -997,3 +997,6 @@ input[type='time'].input.hs-time { width: 112px; height: 38px; line-height: 38px
 /* Page Dev : services aux vrais chiffres (usage.json) */
 .status-dot.error { background: var(--danger); }
 .dev-live { gap: 8px; padding-top: 10px; border-top: 1px solid var(--border); }
+.dev-live-details { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; padding: 9px 11px; border-radius: 10px; background: var(--bg-sunk); border: 1px solid var(--border); }
+.dev-live-details > div { gap: 10px; }
+.dev-live-details .mono { white-space: nowrap; flex-shrink: 0; }

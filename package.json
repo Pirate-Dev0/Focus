@@ -7,7 +7,11 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "bridge": "node server/agent-bridge.mjs"
+    "bridge": "node server/agent-bridge.mjs",
+    "usage": "node server/usage-mac.mjs",
+    "usage:watch": "node server/usage-mac.mjs watch",
+    "usage:install": "node server/usage-mac.mjs install",
+    "usage:uninstall": "node server/usage-mac.mjs uninstall"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",

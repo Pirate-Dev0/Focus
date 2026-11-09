@@ -116,8 +116,9 @@ function mergeSubs(winner: State, other: State): State {
 }
 
 /* ---------- Consommation réelle des IA ----------
-   usage.json est écrit toutes les heures par la GitHub Action du repo de données (usage.mjs).
-   On le lit à part : il ne fait pas partie de l'état synchronisé, donc jamais de conflit avec data.json. */
+   usage.json : écrit toutes les heures par la GitHub Action du repo de données (ElevenLabs).
+   usage-mac.json : écrit par le Mac (npm run usage) pour Claude Code et Antigravity.
+   On les lit à part : ils ne font pas partie de l'état synchronisé, donc jamais de conflit avec data.json. */
 export interface LiveService {
   plan?: string | null;
   used?: number;
@@ -127,6 +128,9 @@ export interface LiveService {
   status?: string | null;
   error?: string;
   fetchedAt?: number;
+  details?: { label: string; value: string }[];
+  source?: 'cloud' | 'mac';
+  seenAt?: number; // dernière fois que la source a écrit son fichier
 }
 export interface LiveUsage { updatedAt: number; services: Record<string, LiveService | undefined> }
 const USAGE_KEY = 'focus.usage';
@@ -137,7 +141,9 @@ let usage: LiveUsage | null = (() => {
     return null;
   }
 })();
-let usageSha: string | null = null;
+const USAGE_FILES = ['usage.json', 'usage-mac.json'] as const;
+const usageSha: Record<string, string> = {};
+const usageParts: Record<string, LiveUsage | undefined> = {};
 const usageL = new Set<() => void>();
 export function useLiveUsage() {
   return useSyncExternalStore(
@@ -149,14 +155,28 @@ export function useLiveUsage() {
   );
 }
 
+async function readUsageFile(c: GhConfig, name: string) {
+  const res = await gh(c, `/contents/${name}?ref=${encodeURIComponent(c.branch)}`);
+  if (!res.ok) return false; // 404 : rien d'écrit pour l'instant
+  const j = await res.json();
+  if (j.sha === usageSha[name]) return false;
+  usageSha[name] = j.sha;
+  usageParts[name] = JSON.parse(b64decode(j.content));
+  return true;
+}
+
 async function readUsage(c: GhConfig) {
   try {
-    const res = await gh(c, `/contents/usage.json?ref=${encodeURIComponent(c.branch)}`);
-    if (!res.ok) return; // 404 : la GitHub Action n'a encore rien écrit
-    const j = await res.json();
-    if (j.sha === usageSha) return;
-    usageSha = j.sha;
-    usage = JSON.parse(b64decode(j.content));
+    const changed = (await Promise.all(USAGE_FILES.map((n) => readUsageFile(c, n)))).some(Boolean);
+    if (!changed) return;
+    const services: LiveUsage['services'] = {};
+    for (const n of USAGE_FILES) {
+      const part = usageParts[n];
+      for (const [k, v] of Object.entries(part?.services || {})) {
+        if (v) services[k] = { ...v, source: n === 'usage-mac.json' ? 'mac' : 'cloud', seenAt: part!.updatedAt };
+      }
+    }
+    usage = { updatedAt: Date.now(), services };
     try {
       localStorage.setItem(USAGE_KEY, JSON.stringify(usage));
     } catch {}
