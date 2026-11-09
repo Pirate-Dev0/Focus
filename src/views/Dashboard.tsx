@@ -53,7 +53,11 @@ export default function Dashboard() {
   const achieved = doneToday.length + habitsDone;
 
   const title = isToday ? "Aujourd'hui" : daysBetween(t, day) === 1 ? 'Demain' : parseDate(day).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric' });
-  const dateLabel = parseDate(t).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+  // sous le titre : la date du jour affiché, ou l'écart quand le titre la donne déjà
+  const gap = daysBetween(t, day);
+  const dateLabel = isToday || gap === 1
+    ? parseDate(day).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
+    : gap > 0 ? `Dans ${gap} jours` : `Il y a ${-gap} jour${gap < -1 ? 's' : ''}`;
 
   const sections: Record<HomeSection, JSX.Element | null> = {
     tasks: <TasksSection key="tasks" day={day} open={open} done={doneToday} onOpen={setOpenTask} projectName={projectName} />,
@@ -65,14 +69,22 @@ export default function Dashboard() {
 
   return (
     <>
+      {/* En-tête : salut + actions en haut, grand titre + anneau du jour, date en dessous */}
       <header className="today-head">
-        <div className="grow">
-          <div className="today-kicker">{greeting()} {s.settings.name} · <span style={{ textTransform: 'none' }}>{dateLabel}</span></div>
-          <h1 className="page-title" style={{ textTransform: 'capitalize' }}>{title}</h1>
+        <div className="today-top">
+          <span className="today-kicker">{greeting()} {s.settings.name}</span>
+          <span className="today-actions hide-desktop">
+            <SyncBadge compact />
+            <button className="icon-btn" onClick={() => go('settings')} aria-label="Réglages"><Settings size={19} /></button>
+          </span>
         </div>
-        <span className="hide-desktop"><SyncBadge compact /></span>
-        <DayRing value={achieved} total={total} />
-        <button className="icon-btn hide-desktop" onClick={() => go('settings')} aria-label="Réglages"><Settings size={19} /></button>
+        <div className="today-main">
+          <div className="grow">
+            <h1 className="page-title" style={{ textTransform: 'capitalize' }}>{title}</h1>
+            <div className="today-date">{dateLabel}</div>
+          </div>
+          <DayRing value={achieved} total={total} />
+        </div>
       </header>
 
       <GoalHero onEdit={() => setEditGoal(true)} />

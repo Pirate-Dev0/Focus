@@ -49,7 +49,7 @@ export function SyncBadge({ compact }: { compact?: boolean }) {
   const Icon = s === 'syncing' ? Loader2 : s === 'synced' ? Cloud : CloudOff;
   const label = s === 'syncing' ? 'Synchro…' : s === 'synced' ? 'Synchronisé' : s === 'offline' ? 'Hors ligne' : 'Erreur de synchro';
   return (
-    <span className={'row small sync-badge' + (s === 'error' ? ' danger-text' : ' faint')} style={{ gap: 6 }} title={label}>
+    <span className={'row small sync-badge' + (compact ? ' compact' : '') + (s === 'error' ? ' danger-text' : ' faint')} style={{ gap: 6 }} title={label}>
       <Icon size={13} className={s === 'syncing' ? 'spin' : ''} /> {(!compact || s !== 'syncing') && <span>{label}</span>}
     </span>
   );

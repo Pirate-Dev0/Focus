@@ -78,21 +78,20 @@ export default function Dev() {
       setFormName(preset.name);
       setFormCategory(preset.category);
       setFormUnit(preset.unit);
-      setFormPlan(preset.plan);
-      setFormLimit(preset.defaultLimit);
       setFormColor(preset.color);
     } else {
       setFormName('');
       setFormCategory('llm');
       setFormUnit('tokens');
-      setFormPlan('Pro');
-      setFormLimit(1000000);
       setFormColor('#3b82f6');
     }
+    // champs vides : tu remplis tes vrais chiffres (forfait, quota, budget)
+    setFormPlan('');
+    setFormLimit(undefined);
     setFormUsed(0);
-    setFormCost(0);
-    setFormBudget(30);
-    setFormReset(new Date(Date.now() + 25 * 86400000).toISOString().slice(0, 10));
+    setFormCost(undefined);
+    setFormBudget(undefined);
+    setFormReset('');
     setFormNotes('');
     setSheetOpen(true);
   };
@@ -673,7 +672,7 @@ export default function Dev() {
           {!editingService && (
             <div>
               <label className="small faint" style={{ display: 'block', marginBottom: 6 }}>
-                Préréglages rapides (1 clic) :
+                Choisis une app ou remplis à la main
               </label>
               <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
                 {PRESET_APPS.map((p) => (
@@ -691,7 +690,7 @@ export default function Dev() {
             </div>
           )}
 
-          <Field label="Nom de l'application / Fournisseur">
+          <Field label="Nom de l'application">
             <input
               className="input"
               value={formName}
@@ -708,22 +707,22 @@ export default function Dev() {
                 value={formCategory}
                 onChange={(e) => setFormCategory(e.target.value as AiService['category'])}
               >
-                <option value="llm">LLM / Modèle de langage</option>
-                <option value="code">Code & Agents autonomes</option>
-                <option value="voice">Audio / Synthèse vocale</option>
-                <option value="image">Génération d'images</option>
-                <option value="other">Autre outil IA</option>
+                <option value="llm">LLM</option>
+                <option value="code">Code & agents</option>
+                <option value="voice">Voix</option>
+                <option value="image">Images</option>
+                <option value="other">Autre</option>
               </select>
             </Field>
 
-            <Field label="Unité de mesure">
+            <Field label="Unité">
               <select
                 className="input"
                 value={formUnit}
                 onChange={(e) => setFormUnit(e.target.value as AiServiceUnit)}
               >
                 <option value="tokens">Tokens</option>
-                <option value="chars">Caractères (ElevenLabs)</option>
+                <option value="chars">Caractères</option>
                 <option value="credits">Crédits</option>
                 <option value="usd">USD ($)</option>
               </select>
@@ -744,15 +743,15 @@ export default function Dev() {
               <NumInput
                 value={formUsed}
                 onChange={setFormUsed}
-                placeholder="Ex: 642000"
+                placeholder="Ex : 250000"
               />
             </Field>
 
-            <Field label="Limite / Quota mensuel (optionnel)">
+            <Field label="Quota mensuel">
               <NumInput
                 value={formLimit ?? null}
                 onChange={(n) => setFormLimit(n > 0 ? n : undefined)}
-                placeholder="Ex: 1000000"
+                placeholder="Ex : 1000000"
               />
             </Field>
           </div>
@@ -762,20 +761,20 @@ export default function Dev() {
               <NumInput
                 value={formCost ?? null}
                 onChange={(n) => setFormCost(n >= 0 ? n : undefined)}
-                placeholder="Ex: 14.80"
+                placeholder="Ex : 12,50"
               />
             </Field>
 
-            <Field label="Budget max mensuel ($)">
+            <Field label="Budget mensuel ($)">
               <NumInput
                 value={formBudget ?? null}
                 onChange={(n) => setFormBudget(n > 0 ? n : undefined)}
-                placeholder="Ex: 30"
+                placeholder="Ex : 30"
               />
             </Field>
           </div>
 
-          <Field label="Date de réinitialisation du quota">
+          <Field label="Remise à zéro du quota">
             <input
               type="date"
               className="input"
@@ -784,35 +783,33 @@ export default function Dev() {
             />
           </Field>
 
-          <Field label="Notes / Modèles utilisés">
+          <Field label="Modèles utilisés">
             <textarea
               className="input"
               rows={2}
               value={formNotes}
               onChange={(e) => setFormNotes(e.target.value)}
-              placeholder="Ex: Claude 3.5 Sonnet & Haiku 3.5"
+              placeholder="Ex : Opus 5.5, Sonnet 5.5"
             />
           </Field>
 
-          <div className="row-between" style={{ marginTop: 12 }}>
-            {editingService ? (
+          {/* Téléphone : « Enregistrer » en grand, puis Annuler / Supprimer côte à côte. Ordi : sur une ligne. */}
+          <div className="dev-form-foot">
+            <button type="button" className="btn btn-primary btn-lg dev-form-save" onClick={saveService}>
+              {editingService ? 'Enregistrer' : 'Ajouter l’application'}
+            </button>
+            <button type="button" className="btn btn-ghost dev-form-cancel" onClick={() => setSheetOpen(false)}>
+              Annuler
+            </button>
+            {editingService && (
               <button
                 type="button"
-                className="btn btn-ghost btn-danger small"
+                className="btn btn-ghost btn-danger dev-form-del"
                 onClick={() => deleteService(editingService.id, editingService.name)}
               >
                 <Trash2 size={14} /> Supprimer
               </button>
-            ) : <div />}
-
-            <div className="row" style={{ gap: 8 }}>
-              <button type="button" className="btn btn-ghost" onClick={() => setSheetOpen(false)}>
-                Annuler
-              </button>
-              <button type="button" className="btn btn-primary" onClick={saveService}>
-                {editingService ? 'Enregistrer les modifications' : 'Ajouter l’application'}
-              </button>
-            </div>
+            )}
           </div>
         </div>
       </Sheet>
