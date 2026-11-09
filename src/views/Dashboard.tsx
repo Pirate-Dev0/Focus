@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { ArrowRight, ArrowUpRight, CalendarClock, ChevronDown, ChevronUp, Clock, Dumbbell, Eye, EyeOff, Flag, Flame, FolderKanban, Plus, Settings, SlidersHorizontal, Snowflake, Target, TrendingUp, Wallet, Zap } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, ChevronDown, ChevronUp, Clock, Dumbbell, Eye, EyeOff, Flame, FolderKanban, Plus, Settings, SlidersHorizontal, Snowflake, Wallet, Zap } from 'lucide-react';
 import { update, useAppState } from '../store';
 import { go } from '../router';
 import { Field, NumInput, Progress, Sheet, Sparkline } from '../components/ui';
@@ -358,23 +358,32 @@ function GoalHero({ onEdit }: { onEdit: () => void }) {
   const next = MILESTONES.map((f) => Math.round(target * f)).find((m) => m > mrr) ?? target;
   return (
     <button className={'goal-hero' + (reached ? ' reached' : '')} onClick={onEdit} aria-label={`${goal.title} : ${num(pct)} %. Modifier l'objectif`}>
-      <span className="gh-aura" aria-hidden="true" />
-      <span className="gh-top">
-        <span className="gh-title"><Target size={15} strokeWidth={2.4} /> {goal.title}</span>
-        <span className="gh-pct">{num(pct)} %</span>
-      </span>
-      <span className="gh-value">
-        <span className="gh-num">{eur(mrr)}</span>
-        <span className="gh-of">/ {eur(target)}</span>
-      </span>
-      <span className="gh-bar" aria-hidden="true">
-        {[25, 50, 75].map((m) => <i key={m} className="gh-tick" style={{ left: m + '%' }} />)}
-        <i className="gh-fill" style={{ width: pct + '%' }}><i className="gh-knob" /></i>
-      </span>
-      <span className="gh-stats">
-        <span><strong>{num(daysLeft)}</strong><small><CalendarClock size={11} /> jours restants</small></span>
-        <span><strong>{reached ? '✓' : '+' + eur(perMonth)}</strong><small><TrendingUp size={11} /> en plus / mois</small></span>
-        <span><strong>{reached ? '🎉' : eur(next)}</strong><small><Flag size={11} /> {reached ? 'atteint !' : 'prochain palier'}</small></span>
+      {/* Carte « dossier » : visuel flou en haut, onglet sombre qui le recouvre */}
+      <span className="gh-shell">
+        <span className="gh-art" aria-hidden="true"><i /><i /><i /><i /><i /><i /></span>
+        <span className="gh-corner">
+          {reached ? 'Objectif' : 'Prochain palier'}<br />{reached ? 'atteint 🎉' : eur(next)}
+        </span>
+        <span className="gh-folder">
+          <span className="gh-tab" aria-hidden="true">
+            <svg className="gh-notch" viewBox="0 0 46 27" preserveAspectRatio="none"><path d="M0 0C10 0 15 4 20 12C25 21 30 26 40 26H46V27H0Z" /></svg>
+          </span>
+          <span className="gh-head">
+            <span className="gh-title">{goal.title}</span>
+            <span className="gh-sub">{reached ? `${num(pct)} % · bravo !` : `${num(pct)} % · +${eur(perMonth)} / mois`}</span>
+          </span>
+          <span className="gh-bar" aria-hidden="true">
+            {[25, 50, 75].map((m) => <i key={m} className="gh-tick" style={{ left: m + '%' }} />)}
+            <i className="gh-fill" style={{ width: pct + '%' }}><i className="gh-knob" /></i>
+          </span>
+          <span className="gh-foot">
+            <span className="gh-value">
+              <span className="gh-num">{eur(mrr)}</span>
+              <span className="gh-of">/ {eur(target)}</span>
+            </span>
+            <span className="gh-days">{num(daysLeft)} {daysLeft > 1 ? 'jours' : 'jour'}</span>
+          </span>
+        </span>
       </span>
     </button>
   );
