@@ -24,7 +24,7 @@
   --ease: cubic-bezier(.2, .9, .25, 1);
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --tabbar-h: 64px;
+  --tabbar-h: 60px;
   --tabbar-gap: max(12px, calc(var(--safe-bottom) - 10px));
   --glass: rgba(255, 255, 255, .72);
   --glass-edge: inset 0 0 0 .5px rgba(0, 0, 0, .07), inset 0 1px 0 rgba(255, 255, 255, .9);
@@ -140,12 +140,8 @@ button, .tab, .list-item, .kcard, .task-row, .habit-tile, .ds, .swipe { -webkit-
   transform: translateX(calc(var(--i, 0) * 100%));
   transition: transform .5s cubic-bezier(.34, 1.36, .5, 1);
 }
-.tab {
-  position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-width: 0;
-  color: var(--text-2); font-size: 10px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; transition: color .2s;
-}
+.tab { position: relative; z-index: 1; display: grid; place-items: center; min-width: 0; color: var(--text-3); transition: color .2s; }
 .tab.active { color: var(--text); }
-.tab-label { max-width: 100%; padding: 0 2px; overflow: hidden; text-overflow: ellipsis; }
 .tab-icon { position: relative; display: grid; place-items: center; height: 28px; transition: transform .3s cubic-bezier(.34, 1.5, .5, 1); }
 .tab:active .tab-icon { transform: scale(.82); }
 .tab-badge {

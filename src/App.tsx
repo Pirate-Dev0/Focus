@@ -31,11 +31,11 @@ function useTheme() {
   }, [theme]);
 }
 
-const NAV: { name: TabName; label: string; short: string; icon: typeof CalendarCheck }[] = [
-  { name: 'home', label: "Aujourd'hui", short: "Aujourd'hui", icon: CalendarCheck },
-  { name: 'life', label: 'Life', short: 'Life', icon: HeartPulse },
-  { name: 'wallet', label: 'Portefeuille', short: 'Portefeuille', icon: WalletIcon },
-  { name: 'projects', label: 'Projets', short: 'Projets', icon: FolderKanban }
+const NAV: { name: TabName; label: string; icon: typeof CalendarCheck }[] = [
+  { name: 'home', label: "Aujourd'hui", icon: CalendarCheck },
+  { name: 'life', label: 'Life', icon: HeartPulse },
+  { name: 'wallet', label: 'Portefeuille', icon: WalletIcon },
+  { name: 'projects', label: 'Projets', icon: FolderKanban }
 ];
 
 export function SyncBadge({ compact }: { compact?: boolean }) {
@@ -192,12 +192,11 @@ export default function App() {
 
 function TabButton({ n, active, badge = 0, onTap }: { n: (typeof NAV)[number]; active: boolean; badge?: number; onTap: () => void }) {
   return (
-    <button className={'tab' + (active ? ' active' : '')} onClick={onTap} aria-current={active ? 'page' : undefined}>
+    <button className={'tab' + (active ? ' active' : '')} onClick={onTap} aria-current={active ? 'page' : undefined} aria-label={n.label} title={n.label}>
       <span className="tab-icon">
-        <n.icon size={23} strokeWidth={active ? 2.2 : 1.8} />
+        <n.icon size={25} strokeWidth={active ? 2.2 : 1.8} />
         {badge > 0 && <span className="tab-badge">{badge > 9 ? '9+' : badge}</span>}
       </span>
-      <span className="tab-label">{n.short}</span>
     </button>
   );
 }
