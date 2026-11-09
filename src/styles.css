@@ -944,6 +944,18 @@ button:disabled { cursor: default; }
 
 .hs-colors { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 8px; justify-items: center; }
 .hs-colors .hb-swatch { width: 32px; height: 32px; }
+.hs-colors { row-gap: 12px; }
+.hs-label-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.hs-label-row .hs-label { margin-bottom: 0; }
+.hs-more { display: inline-flex; align-items: center; gap: 3px; height: 28px; padding: 0 10px; border-radius: 99px; font-size: 12.5px; font-weight: 600; color: var(--text-2); background: var(--bg-sunk); }
+.hs-more svg { transition: transform .2s var(--ease); }
+.hs-more svg.flip { transform: rotate(180deg); }
+.hs-custom { position: relative; display: flex; align-items: center; gap: 12px; margin-top: 14px; padding: 11px 12px; border-radius: 16px; border: 1px solid var(--border); background: var(--bg-sunk); cursor: pointer; }
+.hs-custom.on { border-color: color-mix(in srgb, var(--c) 55%, var(--border)); }
+.hs-custom-dot { width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%; background: var(--c); }
+.hs-custom.on .hs-custom-dot { box-shadow: 0 0 0 2.5px var(--bg-sunk), 0 0 0 4.5px var(--c); }
+.hs-custom-dot.rainbow { background: conic-gradient(#ef4444, #f59e0b, #eab308, #22c55e, #06b6d4, #3b82f6, #8b5cf6, #ec4899, #ef4444); }
+.hs-custom input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; }
 
 .hs-grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
 .hs-mini { display: flex; flex-direction: column; gap: 6px; min-width: 0; }

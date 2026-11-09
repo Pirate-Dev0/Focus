@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties } from 'react';
-import { BarChart3, Bell, Check, ChevronRight, Clock, Flame, Hash, Minus, Moon, Plus, Snowflake, Sun, Sunrise, Trash2 } from 'lucide-react';
+import { BarChart3, Bell, Check, ChevronDown, ChevronRight, Clock, Flame, Hash, Minus, Moon, Plus, Snowflake, Sun, Sunrise, Trash2 } from 'lucide-react';
 import { update, useAppState } from '../store';
 import { go } from '../router';
 import { ChipScroll, NumInput, Segmented, Sheet, Empty, toast } from '../components/ui';
@@ -33,6 +33,11 @@ export default function Life({ tab }: { tab?: string }) {
 }
 
 const HABIT_COLORS = ['#3b82f6', '#c026d3', '#14b8a6', '#f97316', '#ec4899', '#22c55e', '#6366f1', '#ef4444'];
+// Couleurs en plus, dépliables dans la fiche habitude (rangées par teinte)
+const MORE_COLORS = [
+  '#b91c1c', '#e11d48', '#db2777', '#a855f7', '#8b5cf6', '#1d4ed8', '#0ea5e9', '#06b6d4',
+  '#10b981', '#15803d', '#65a30d', '#f59e0b', '#c2410c', '#a16207', '#64748b', '#3f3f46',
+];
 const WEEKS = 7; // lignes de la grille d'historique
 const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0]; // lundi → dimanche
 
@@ -304,6 +309,7 @@ function HabitSheet({ habit, defaultColor, onClose }: { habit: Habit | 'new' | n
   const [reminderTime, setReminderTime] = useState('');
   const [streakGoal, setStreakGoal] = useState<number | undefined>(undefined);
   const [key, setKey] = useState<string | null>(null);
+  const [moreColors, setMoreColors] = useState(false);
 
   const k = habit === null ? null : isNew ? 'new' : habit.id;
   if (k !== key) {
@@ -312,6 +318,7 @@ function HabitSheet({ habit, defaultColor, onClose }: { habit: Habit | 'new' | n
       setName(habit.name);
       setEmoji(habit.emoji || '💧');
       setColor(habit.color || defaultColor);
+      setMoreColors(!!habit.color && !HABIT_COLORS.includes(habit.color));
       setDays(habit.days || [0, 1, 2, 3, 4, 5, 6]);
       setFreqType(habit.frequencyType || 'days');
       setTimesPerWeek(habit.timesPerWeek || 3);
@@ -326,6 +333,7 @@ function HabitSheet({ habit, defaultColor, onClose }: { habit: Habit | 'new' | n
       setName('');
       setEmoji('💧');
       setColor(defaultColor);
+      setMoreColors(false);
       setDays([0, 1, 2, 3, 4, 5, 6]);
       setFreqType('days');
       setTimesPerWeek(3);
@@ -466,19 +474,44 @@ function HabitSheet({ habit, defaultColor, onClose }: { habit: Habit | 'new' | n
         </section>
 
         <section className="hs-sec">
-          <div className="hs-label">Couleur</div>
+          <div className="hs-label-row">
+            <div className="hs-label">Couleur</div>
+            <button type="button" className="hs-more" onClick={() => setMoreColors((v) => !v)} aria-expanded={moreColors}>
+              {moreColors ? 'Moins' : 'Plus de couleurs'}
+              <ChevronDown size={14} className={moreColors ? 'flip' : ''} />
+            </button>
+          </div>
           <div className="hs-colors">
-            {HABIT_COLORS.map((c) => (
+            {(moreColors ? [...HABIT_COLORS, ...MORE_COLORS] : HABIT_COLORS).map((c) => (
               <button
                 key={c}
                 type="button"
                 aria-label={c}
-                className={'hb-swatch' + (color === c ? ' on' : '')}
+                className={'hb-swatch' + (color.toLowerCase() === c ? ' on' : '')}
                 style={{ '--c': c } as CSSProperties}
                 onClick={() => setColor(c)}
               />
             ))}
           </div>
+          {moreColors && (() => {
+            const custom = ![...HABIT_COLORS, ...MORE_COLORS].includes(color.toLowerCase());
+            return (
+              <label className={'hs-custom' + (custom ? ' on' : '')}>
+                <span className={'hs-custom-dot' + (custom ? '' : ' rainbow')} style={{ '--c': color } as CSSProperties} />
+                <span className="hs-row-text">
+                  <b>Couleur personnalisée</b>
+                  <span>{custom ? color.toUpperCase() : 'Choisis n’importe quelle teinte'}</span>
+                </span>
+                <ChevronRight size={16} className="faint" />
+                <input
+                  type="color"
+                  value={/^#[0-9a-f]{6}$/i.test(color) ? color : '#3b82f6'}
+                  onChange={(e) => setColor(e.target.value)}
+                  aria-label="Couleur personnalisée"
+                />
+              </label>
+            );
+          })()}
         </section>
 
         <section className="hs-sec">
