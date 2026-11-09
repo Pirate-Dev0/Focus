@@ -1,11 +1,55 @@
-import { useState } from 'react';
-import { ExternalLink, Plus, Trash2 } from 'lucide-react';
+import { useState, type CSSProperties, type ReactNode } from 'react';
+import { Car, ChevronRight, Dumbbell, ExternalLink, Footprints, Package, Plus, Receipt, Repeat, Server, Shirt, Smartphone, Tag, Target, Ticket, Trash2, TrendingDown, TrendingUp, Utensils, Watch, Wrench, type LucideIcon } from 'lucide-react';
 import { update, useAppState } from '../store';
 import { go } from '../router';
 import { Empty, Field, NumInput, Segmented, Sheet, Sparkline, toast } from '../components/ui';
 import { EXPENSE_CATS, VINTED_CATS } from '../components/QuickAdd';
 import type { Expense, VintedItem, VintedStatus } from '../types';
-import { eur, fmtDate, haptic, monthlySubs, mrrTotal, num, parseDate, spentThisMonth, today, uid, vintedProfit, vintedStats } from '../utils';
+import { eur, fmtDate, haptic, monthlySubs, mrrTotal, num, parseDate, PROJECT_STATUS_LABEL, spentThisMonth, today, uid, vintedProfit, vintedStats } from '../utils';
+
+/* ---------- Petits outils d'affichage ---------- */
+/** Montant signé avec un vrai signe moins : « +12 € », « −26 € » */
+const signed = (n: number, cents = true) => {
+  const a = Math.abs(n);
+  const zero = cents ? Math.round(a * 100) === 0 : Math.round(a) === 0;
+  return (zero ? '' : n < 0 ? '\u2212' : '+') + (cents ? money(a) : eur(a));
+};
+/** Les centimes seulement quand il y en a : « 20 € », « 21,99 € » */
+const money = (n: number) => eur(n, Math.round(Math.abs(n) * 100) % 100 !== 0);
+/** Vert si positif, rouge si négatif */
+const tone = (n: number) => (n > 0 ? ' w-pos' : n < 0 ? ' w-neg' : '');
+
+const PROJECT_COLORS = ['#3b82f6', '#c026d3', '#14b8a6', '#f97316', '#ec4899', '#22c55e', '#6366f1', '#ef4444'];
+const colorOf = (key: string) => {
+  let h = 0;
+  for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return PROJECT_COLORS[h % PROJECT_COLORS.length];
+};
+
+const EXP_META: Record<string, { Icon: LucideIcon; color: string }> = {
+  'Outils & SaaS': { Icon: Wrench, color: '#6366f1' },
+  Hébergement: { Icon: Server, color: '#0ea5e9' },
+  'Abonnements perso': { Icon: Repeat, color: '#a855f7' },
+  Bouffe: { Icon: Utensils, color: '#f59e0b' },
+  'Salle & santé': { Icon: Dumbbell, color: '#10b981' },
+  Transport: { Icon: Car, color: '#64748b' },
+  Fringues: { Icon: Shirt, color: '#ec4899' },
+  Sorties: { Icon: Ticket, color: '#f97316' }
+};
+const expMeta = (c: string) => EXP_META[c] || { Icon: Receipt, color: '#8b8b94' };
+
+const VIN_ICON: Record<string, LucideIcon> = { Vêtements: Shirt, Chaussures: Footprints, Accessoires: Watch, Électronique: Smartphone };
+const V_COLOR: Record<VintedStatus, string> = { achete: '#f59e0b', en_vente: '#3b82f6', vendu: '#22c55e', invendu: '#8b8b94' };
+const V_SHORT: Record<VintedStatus, string> = { achete: 'À publier', en_vente: 'En vente', vendu: 'Vendu', invendu: 'Invendu' };
+
+/** Pastille carrée teintée : icône ou initiale */
+function Tile({ Icon, color, children }: { Icon?: LucideIcon; color: string; children?: ReactNode }) {
+  return (
+    <span className="w-tile" style={{ '--c': color } as CSSProperties} aria-hidden="true">
+      {Icon ? <Icon size={18} strokeWidth={2.1} /> : children}
+    </span>
+  );
+}
 
 export default function Wallet({ tab }: { tab?: string }) {
   const current = (['revenus', 'depenses', 'vinted'].includes(tab || '') ? tab : 'revenus') as 'revenus' | 'depenses' | 'vinted';
@@ -17,8 +61,17 @@ export default function Wallet({ tab }: { tab?: string }) {
           <div className="page-sub">Ce qui rentre, ce qui sort, et Vinted à part.</div>
         </div>
       </div>
-      <div style={{ marginBottom: 18 }}>
-        <Segmented value={current} onChange={(v) => go('wallet/' + v)} options={[{ value: 'revenus', label: 'Revenus' }, { value: 'depenses', label: 'Dépenses' }, { value: 'vinted', label: 'Vinted' }]} />
+      <div className="w-tabs">
+        <Segmented
+          full
+          value={current}
+          onChange={(v) => go('wallet/' + v)}
+          options={[
+            { value: 'revenus', label: <><TrendingUp size={15} /> Revenus</> },
+            { value: 'depenses', label: <><Receipt size={15} /> Dépenses</> },
+            { value: 'vinted', label: <><Tag size={15} /> Vinted</> }
+          ]}
+        />
       </div>
       {current === 'revenus' && <Revenus />}
       {current === 'depenses' && <Depenses />}
@@ -33,54 +86,97 @@ function Revenus() {
   const [edit, setEdit] = useState<string | null>(null);
   const mrr = mrrTotal(s);
   const subs = monthlySubs(s);
-  const projects = s.projects.filter((p) => !p.archived && p.name !== 'Général');
-  const p = s.projects.find((x) => x.id === edit);
+  const net = mrr - subs;
+  const goal = s.settings.goal;
+  const pct = Math.min(100, (mrr / Math.max(1, goal.target)) * 100);
   const hist = s.mrrHistory;
-  const prev = hist.length >= 2 ? hist[hist.length - 2].total : null;
+  const delta = hist.length >= 2 ? mrr - hist[hist.length - 2].total : 0;
+  const vin = vintedStats(s.vinted);
+  const projects = s.projects
+    .filter((p) => !p.archived && p.name !== 'Général')
+    .sort((a, b) => Number(b.countsInMrr) - Number(a.countsInMrr) || (b.mrr || 0) - (a.mrr || 0));
+  const p = s.projects.find((x) => x.id === edit);
 
   return (
     <>
-      <div className="card card-pad" style={{ marginBottom: 12 }}>
-        <div className="row-between" style={{ alignItems: 'flex-end' }}>
-          <div>
-            <div className="faint small">MRR total</div>
-            <div className="big-num" style={{ fontSize: 36 }}>{eur(mrr)}</div>
-            <div className="faint small mono">{prev !== null ? `${mrr - prev >= 0 ? '+' : ''}${eur(mrr - prev)} depuis la dernière mise à jour` : 'Mets à jour le MRR de chaque projet ↓'}</div>
-          </div>
-          <span className="muted"><Sparkline data={hist.map((h) => h.total)} width={110} height={44} /></span>
+      <div className="card w-hero">
+        <div className="w-hero-top">
+          <span className="w-label">MRR total</span>
+          {delta !== 0 && (
+            <span className={'w-delta' + tone(delta)}>
+              {delta > 0 ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
+              {signed(delta, false)}
+            </span>
+          )}
         </div>
-        <div className="divider" style={{ margin: '14px 0 10px' }} />
-        <div className="kv"><span>Abonnements & charges fixes</span><span>{subs ? '−' : ''}{eur(subs)}</span></div>
-        <div className="kv"><span style={{ color: 'var(--text)', fontWeight: 600 }}>Net mensuel</span><span style={{ fontWeight: 600 }}>{eur(mrr - subs)}</span></div>
+        <div className="w-big-row">
+          <div className="w-big">{eur(mrr)}</div>
+          {hist.length >= 2 && <span className="w-spark"><Sparkline data={hist.map((h) => h.total)} width={84} height={36} /></span>}
+        </div>
+        <div className="w-goal">
+          <div className="w-goal-bar"><i style={{ width: pct > 0 ? `max(8px, ${pct}%)` : 0 }} /></div>
+          <div className="w-goal-meta">
+            <span><Target size={13} /> {goal.title}</span>
+            <b>{num(pct)} %</b>
+          </div>
+        </div>
+        <div className="w-split">
+          <div><span>Charges fixes</span><b>{signed(-subs, false)}</b></div>
+          <div><span>Net mensuel</span><b className={tone(net)}>{signed(net, false)}</b></div>
+        </div>
       </div>
 
-      <div className="section-title"><span>MRR par projet</span><span className="faint">touche pour modifier</span></div>
+      <div className="section-title">
+        <span>Par projet<span className="count">{projects.length}</span></span>
+        <span className="faint">{mrr === 0 ? 'Touche pour saisir le MRR' : 'par mois'}</span>
+      </div>
       <div className="list">
-        {projects.map((x) => (
-          <button key={x.id} className="list-item" onClick={() => setEdit(x.id)}>
-            <div className="grow">
-              <div style={{ fontWeight: 500 }}>{x.name}</div>
-              <div className="faint small">{x.countsInMrr ? 'Compte dans l’objectif' : 'Hors objectif MRR'}</div>
-            </div>
-            <span className="mono" style={{ fontWeight: 600, opacity: x.countsInMrr ? 1 : 0.4 }}>{eur(x.mrr)}</span>
-          </button>
-        ))}
+        {projects.map((x) => {
+          const share = mrr > 0 && x.countsInMrr ? (x.mrr || 0) / mrr : 0;
+          const c = colorOf(x.id);
+          return (
+            <button key={x.id} className={'list-item w-row' + (x.countsInMrr ? '' : ' off')} onClick={() => setEdit(x.id)}>
+              <Tile color={c}>{x.name.trim().charAt(0).toUpperCase()}</Tile>
+              <div className="grow w-row-main">
+                <div className="w-row-name ellipsis">{x.name}</div>
+                <div className="w-row-sub ellipsis">{[x.kind, x.countsInMrr ? PROJECT_STATUS_LABEL[x.status] : 'hors objectif'].filter(Boolean).join(' · ')}</div>
+                {share > 0 && <div className="w-share"><i style={{ width: share * 100 + '%', background: c }} /></div>}
+              </div>
+              <div className="w-row-end">
+                <span className="w-amt">{eur(x.mrr)}</span>
+                {share > 0 && <span className="w-amt-sub">{num(share * 100)} %</span>}
+              </div>
+            </button>
+          );
+        })}
       </div>
 
-      <div className="section-title"><span>Vinted (séparé)</span></div>
-      <button className="card card-click card-pad row-between" style={{ display: 'flex' }} onClick={() => go('wallet/vinted')}>
-        <span className="muted">Solde Vinted</span>
-        <span className="mono" style={{ fontWeight: 600 }}>{eur(vintedStats(s.vinted).balance)}</span>
+      <div className="section-title"><span>Vinted</span><span className="faint">compté à part</span></div>
+      <button className="card card-click w-link" onClick={() => go('wallet/vinted')}>
+        <Tile Icon={Tag} color="#14b8a6" />
+        <div className="grow w-row-main">
+          <div className="w-row-name">Solde Vinted</div>
+          <div className="w-row-sub ellipsis">{vin.stockCount} en stock · {vin.soldCount} vendu{vin.soldCount > 1 ? 's' : ''}</div>
+        </div>
+        <span className={'w-amt' + tone(vin.balance)}>{signed(vin.balance, false)}</span>
+        <ChevronRight size={17} className="faint" />
       </button>
 
       {p && (
         <Sheet open onClose={() => setEdit(null)} title={p.name}>
           <Field label="MRR actuel (€ / mois)">
-            <NumInput autoFocus className="input title-input" value={p.mrr} onChange={(n) => update((d) => { d.projects.find((k) => k.id === p.id)!.mrr = n; })} />
+            <div className="qa-unit">
+              <NumInput autoFocus className="input qa-big" value={p.mrr} onChange={(n) => update((d) => { d.projects.find((k) => k.id === p.id)!.mrr = n; })} />
+              <span>€</span>
+            </div>
           </Field>
-          <label className="row" style={{ marginBottom: 18, cursor: 'pointer' }}>
-            <input type="checkbox" checked={p.countsInMrr} onChange={(e) => update((d) => { d.projects.find((k) => k.id === p.id)!.countsInMrr = e.target.checked; })} style={{ width: 18, height: 18, accentColor: 'var(--text)' }} />
-            <span>Compte dans l'objectif principal</span>
+          <label className="w-toggle">
+            <span>
+              <b>Compte dans l'objectif</b>
+              <small>{goal.title}</small>
+            </span>
+            <input type="checkbox" checked={p.countsInMrr} onChange={(e) => update((d) => { d.projects.find((k) => k.id === p.id)!.countsInMrr = e.target.checked; })} />
+            <i aria-hidden="true" />
           </label>
           <button className="btn btn-primary btn-lg btn-block" onClick={() => { setEdit(null); haptic(); toast('MRR mis à jour'); }}>OK</button>
         </Sheet>
@@ -90,63 +186,96 @@ function Revenus() {
 }
 
 /* ---------------- DÉPENSES ---------------- */
+type ExpenseEdit = Expense | 'mensuel' | 'ponctuel';
+
 function Depenses() {
   const s = useAppState();
-  const [edit, setEdit] = useState<Expense | 'new' | null>(null);
+  const [edit, setEdit] = useState<ExpenseEdit | null>(null);
   const subs = s.expenses.filter((e) => e.kind === 'mensuel').sort((a, b) => Number(b.active) - Number(a.active) || b.amount - a.amount);
   const once = s.expenses.filter((e) => e.kind === 'ponctuel').sort((a, b) => b.date.localeCompare(a.date));
   const byMonth = once.reduce<Record<string, Expense[]>>((acc, e) => { (acc[e.date.slice(0, 7)] ||= []).push(e); return acc; }, {});
-  const mrr = mrrTotal(s);
+  const month = today().slice(0, 7);
   const monthly = monthlySubs(s);
+  const net = mrrTotal(s) - monthly;
+  // Répartition du mois : abonnements actifs + dépenses ponctuelles du mois
+  const parts = [...subs.filter((e) => e.active), ...once.filter((e) => e.date.startsWith(month))].reduce<Record<string, number>>((acc, e) => {
+    acc[e.category] = (acc[e.category] || 0) + e.amount;
+    return acc;
+  }, {});
+  const cats = Object.entries(parts).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  const monthName = parseDate(month + '-01').toLocaleDateString('fr-FR', { month: 'long' });
+
+  const row = (e: Expense, sub: string, end: ReactNode) => {
+    const { Icon, color } = expMeta(e.category);
+    return (
+      <button key={e.id} className={'list-item w-row' + (e.kind === 'mensuel' && !e.active ? ' off' : '')} onClick={() => setEdit(e)}>
+        <Tile Icon={Icon} color={color} />
+        <div className="grow w-row-main">
+          <div className="w-row-name ellipsis">{e.name}</div>
+          <div className="w-row-sub ellipsis">{sub}</div>
+        </div>
+        <div className="w-row-end">{end}</div>
+      </button>
+    );
+  };
 
   return (
     <>
-      <div className="grid grid-2" style={{ marginBottom: 12 }}>
-        <div className="card stat"><div className="k">Charges fixes / mois</div><div className="v">{eur(monthly)}</div><div className="s">{subs.filter((x) => x.active).length} abonnement{subs.length > 1 ? 's' : ''} actif{subs.length > 1 ? 's' : ''}</div></div>
-        <div className="card stat"><div className="k">Dépensé ce mois</div><div className="v">{eur(spentThisMonth(s))}</div><div className="s">Net mensuel : {eur(mrr - monthly)}</div></div>
+      <div className="card w-hero">
+        <div className="w-hero-top"><span className="w-label">Dépensé en {monthName}</span></div>
+        <div className="w-big">{eur(spentThisMonth(s))}</div>
+        {cats.length > 0 ? (
+          <>
+            <div className="w-stack" aria-hidden="true">{cats.map(([c, v]) => <i key={c} style={{ flexGrow: v, background: expMeta(c).color }} />)}</div>
+            <div className="w-legend">
+              {cats.map(([c, v]) => <span key={c}><i style={{ background: expMeta(c).color }} />{c}<b>{eur(v)}</b></span>)}
+            </div>
+          </>
+        ) : (
+          <div className="w-hint">Rien de dépensé ce mois-ci pour l'instant.</div>
+        )}
+        <div className="w-split">
+          <div><span>Charges fixes</span><b>{eur(monthly)}<small>/mois</small></b></div>
+          <div><span>Net mensuel</span><b className={tone(net)}>{signed(net, false)}</b></div>
+        </div>
       </div>
 
-      <div className="section-title"><span>Abonnements<span className="count">{subs.length}</span></span></div>
+      <div className="section-title">
+        <span>Abonnements<span className="count">{subs.length}</span></span>
+        <button className="w-add" onClick={() => setEdit('mensuel')}><Plus size={14} /> Ajouter</button>
+      </div>
       <div className="list">
         {subs.length === 0 && <div className="list-empty">Ajoute tes abonnements : ils sont déduits du MRR pour calculer ton net.</div>}
-        {subs.map((e) => (
-          <button key={e.id} className="list-item" onClick={() => setEdit(e)} style={{ opacity: e.active ? 1 : 0.45 }}>
-            <div className="grow"><div style={{ fontWeight: 500 }}>{e.name}</div><div className="faint small">{e.category}{!e.active ? ' · en pause' : ''}</div></div>
-            <span className="mono" style={{ fontWeight: 500 }}>{eur(e.amount, true)}<span className="faint">/m</span></span>
-          </button>
-        ))}
+        {subs.map((e) => row(e, e.category + (e.active ? '' : ' · en pause'), <><span className="w-amt">{money(e.amount)}</span><span className="w-amt-sub">par mois</span></>))}
       </div>
 
-      <div className="section-title"><span>Dépenses ponctuelles</span></div>
+      <div className="section-title">
+        <span>Dépenses ponctuelles</span>
+        <button className="w-add" onClick={() => setEdit('ponctuel')}><Plus size={14} /> Ajouter</button>
+      </div>
       {once.length === 0 ? (
         <div className="list"><div className="list-empty">Rien pour l'instant.</div></div>
       ) : (
         Object.entries(byMonth).map(([m, items]) => (
-          <div key={m} style={{ marginBottom: 12 }}>
-            <div className="row-between faint small" style={{ margin: '0 4px 6px', textTransform: 'capitalize' }}>
+          <div key={m} className="w-month">
+            <div className="w-month-head">
               <span>{parseDate(m + '-01').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}</span>
-              <span className="mono">{eur(items.reduce((a, e) => a + e.amount, 0))}</span>
+              <span>{money(items.reduce((a, e) => a + e.amount, 0))}</span>
             </div>
             <div className="list">
-              {items.map((e) => (
-                <button key={e.id} className="list-item" onClick={() => setEdit(e)}>
-                  <div className="grow"><div style={{ fontWeight: 500 }}>{e.name}</div><div className="faint small">{e.category} · {fmtDate(e.date)}</div></div>
-                  <span className="mono" style={{ fontWeight: 500 }}>{eur(e.amount, true)}</span>
-                </button>
-              ))}
+              {items.map((e) => row(e, `${e.category} · ${fmtDate(e.date)}`, <span className="w-amt">{money(e.amount)}</span>))}
             </div>
           </div>
         ))
       )}
-      <button className="btn btn-block" style={{ marginTop: 12 }} onClick={() => setEdit('new')}><Plus size={15} /> Nouvelle dépense</button>
       {edit && <ExpenseSheet expense={edit} onClose={() => setEdit(null)} />}
     </>
   );
 }
 
-function ExpenseSheet({ expense, onClose }: { expense: Expense | 'new'; onClose: () => void }) {
-  const isNew = expense === 'new';
-  const [e, setE] = useState<Expense>(isNew ? { id: uid(), name: '', amount: 0, category: EXPENSE_CATS[0], kind: 'mensuel', date: today(), active: true } : { ...expense });
+function ExpenseSheet({ expense, onClose }: { expense: ExpenseEdit; onClose: () => void }) {
+  const isNew = typeof expense === 'string';
+  const [e, setE] = useState<Expense>(typeof expense === 'string' ? { id: uid(), name: '', amount: 0, category: EXPENSE_CATS[0], kind: expense, date: today(), active: true } : { ...expense });
   const save = () => {
     if (!e.name.trim() || !e.amount) return;
     update((d) => {
@@ -186,37 +315,60 @@ function Vinted() {
   const [edit, setEdit] = useState<VintedItem | 'new' | null>(null);
   const st = vintedStats(s.vinted);
   const items = s.vinted.filter((i) => (filter === 'tous' ? true : filter === 'vendu' ? i.status === 'vendu' : i.status !== 'vendu'));
+  const n = (k: number) => <span className="seg-n">{k}</span>;
 
   return (
     <>
-      <div className="card card-pad" style={{ marginBottom: 12 }}>
-        <div className="faint small">Solde Vinted</div>
-        <div className="big-num" style={{ fontSize: 34 }}>{eur(st.balance, true)}</div>
-        <div className="faint small">Ventes encaissées − tous les achats</div>
-      </div>
-      <div className="grid grid-2" style={{ marginBottom: 16 }}>
-        <div className="card stat"><div className="k">Bénéfice réalisé</div><div className="v">{eur(st.profit)}</div><div className="s">{st.soldCount} vendu{st.soldCount > 1 ? 's' : ''} · marge {num(st.margin)} %</div></div>
-        <div className="card stat"><div className="k">Argent immobilisé</div><div className="v">{eur(st.immobilised)}</div><div className="s">{st.stockCount} en stock · potentiel +{eur(st.potential)}</div></div>
+      <div className="card w-hero">
+        <div className="w-hero-top">
+          <span className="w-label">Solde Vinted</span>
+          <span className="w-label-sub">ventes − achats</span>
+        </div>
+        <div className={'w-big' + tone(st.balance)}>{signed(st.balance)}</div>
+        <div className="w-split w-trio">
+          <div><span>Bénéfice</span><b className={tone(st.profit)}>{signed(st.profit, false)}</b><small>marge {num(st.margin)} %</small></div>
+          <div><span>Immobilisé</span><b>{eur(st.immobilised)}</b><small>{st.stockCount} en stock</small></div>
+          <div><span>Potentiel</span><b>{signed(st.potential, false)}</b><small>si tout part</small></div>
+        </div>
       </div>
 
-      <div className="row-between" style={{ marginBottom: 10 }}>
-        <Segmented value={filter} onChange={setFilter} options={[{ value: 'stock', label: 'En stock' }, { value: 'vendu', label: 'Vendus' }, { value: 'tous', label: 'Tous' }]} />
-        <button className="btn btn-primary" onClick={() => setEdit('new')}><Plus size={14} /> Article</button>
+      <div className="w-filter">
+        <Segmented
+          full
+          value={filter}
+          onChange={setFilter}
+          options={[
+            { value: 'stock', label: <>En stock {n(st.stockCount)}</> },
+            { value: 'vendu', label: <>Vendus {n(st.soldCount)}</> },
+            { value: 'tous', label: <>Tous {n(s.vinted.length)}</> }
+          ]}
+        />
+        <button className="w-plus" onClick={() => setEdit('new')} aria-label="Nouvel article"><Plus size={19} /></button>
       </div>
       <div className="list">
         {items.length === 0 && <Empty title="Rien ici">Ajoute un article dès que tu l'achètes.</Empty>}
         {items.map((i) => {
+          const sold = i.status === 'vendu';
           const profit = vintedProfit(i);
+          const cost = i.buyPrice + i.buyFees;
           return (
-            <button key={i.id} className="list-item" onClick={() => setEdit(i)}>
-              <div className="grow">
-                <div style={{ fontWeight: 500 }} className="ellipsis">{i.name}</div>
-                <div className="faint small">{V_LABEL[i.status]} · acheté {eur(i.buyPrice + i.buyFees, true)}{i.targetPrice && i.status !== 'vendu' ? ` · visé ${eur(i.targetPrice)}` : ''}</div>
+            <button key={i.id} className="list-item w-row" onClick={() => setEdit(i)}>
+              <Tile Icon={VIN_ICON[i.category] || Package} color={V_COLOR[i.status]} />
+              <div className="grow w-row-main">
+                <div className="w-row-name ellipsis">{i.name}</div>
+                <div className="w-row-sub ellipsis">
+                  {sold
+                    ? `Vendu ${money(i.sellPrice || 0)} · coût ${money(cost)}`
+                    : `Acheté ${money(cost)}${i.targetPrice ? ` · visé ${money(i.targetPrice)}` : ''}`}
+                </div>
               </div>
-              {i.status === 'vendu' ? (
-                <span className="mono" style={{ fontWeight: 600, color: profit < 0 ? 'var(--danger)' : undefined }}>{profit >= 0 ? '+' : ''}{eur(profit, true)}</span>
+              {sold ? (
+                <div className="w-row-end">
+                  <span className={'w-amt' + tone(profit)}>{signed(profit)}</span>
+                  <span className="w-amt-sub">{i.sellDate ? fmtDate(i.sellDate) : 'bénéfice'}</span>
+                </div>
               ) : (
-                <span className="chip">{V_LABEL[i.status]}</span>
+                <span className="w-status" style={{ '--c': V_COLOR[i.status] } as CSSProperties}>{V_SHORT[i.status]}</span>
               )}
             </button>
           );
@@ -269,7 +421,7 @@ function VintedSheet({ item, onClose }: { item: VintedItem | 'new'; onClose: () 
           </div>
           <div className="card card-pad row-between" style={{ display: 'flex', marginBottom: 14 }}>
             <span className="muted">Bénéfice</span>
-            <span className="mono" style={{ fontWeight: 600 }}>{profit >= 0 ? '+' : ''}{eur(profit, true)}</span>
+            <span className={'w-amt' + tone(profit)}>{signed(profit)}</span>
           </div>
         </>
       )}
