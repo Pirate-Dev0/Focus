@@ -1,152 +1,317 @@
-import { useMemo, useState } from 'react';
-import { ArrowUpRight, Check as CheckIcon, Dumbbell, FolderKanban, Settings, Sprout, Target, Wallet } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
+import { ArrowRight, ArrowUpRight, ChevronDown, ChevronUp, Dumbbell, Eye, EyeOff, Flame, FolderKanban, Plus, Settings, SlidersHorizontal, Sprout, Target, Wallet } from 'lucide-react';
 import { update, useAppState } from '../store';
 import { go } from '../router';
-import { Check, PriorityIcon, Progress, Sheet, Sparkline, Field, NumInput } from '../components/ui';
-import { DueChip, TaskSheet } from '../components/TaskSheet';
+import { Field, NumInput, Progress, Sheet, Sparkline } from '../components/ui';
+import { TaskSheet } from '../components/TaskSheet';
+import { TaskRow } from '../components/TaskRow';
 import { SyncBadge } from '../App';
 import { isConnected } from '../sync';
+import { addTaskFromText, moveTasksTo } from '../actions';
+import type { HomeSection, State } from '../types';
 import {
-  clamp, daysBetween, eur, fmtDate, greeting, habitDueOn, habitStreak, haptic, monthlySubs, mrrTotal, num, parseDate, prioRank, spentThisMonth, today, vintedStats
+  addDays, clamp, dayShort, daysBetween, doneOn, eur, fmtDate, greeting, habitDueOn, habitStreak, haptic, monthlySubs, mrrTotal, num,
+  openTasksFor, parseDate, spentThisMonth, today, vintedStats
 } from '../utils';
+
+const cap = (x: string) => x.charAt(0).toUpperCase() + x.slice(1);
+const SECTION_LABEL: Record<HomeSection, string> = {
+  tasks: 'Tâches du jour',
+  habits: 'Habitudes',
+  goal: 'Objectif principal',
+  upcoming: 'À venir',
+  overview: "Vue d'ensemble"
+};
+const swipeLearned = () => { try { return localStorage.getItem('focus.swipeLearned') === '1'; } catch { return false; } };
+const DEFAULT_ORDER: HomeSection[] = ['tasks', 'habits', 'goal', 'upcoming', 'overview'];
+
+export function homeLayout(s: State) {
+  const h = s.settings.home;
+  const order = [...(h?.order || []).filter((x) => DEFAULT_ORDER.includes(x)), ...DEFAULT_ORDER.filter((x) => !h?.order?.includes(x))];
+  return { order, hidden: h?.hidden || [] };
+}
 
 export default function Dashboard() {
   const s = useAppState();
   const t = today();
+  const [day, setDay] = useState(t);
   const [openTask, setOpenTask] = useState<string | null>(null);
   const [editGoal, setEditGoal] = useState(false);
-
-  const mrr = mrrTotal(s);
-  const goal = s.settings.goal;
-  const pct = clamp(mrr / goal.target) * 100;
-  const daysLeft = Math.max(0, daysBetween(t, goal.deadline));
-  const monthsLeft = Math.max(1, daysLeft / 30.4);
-  const perMonth = Math.max(0, (goal.target - mrr) / monthsLeft);
-
-  const habitsToday = s.habits.filter((h) => !h.archived && habitDueOn(h, t));
-  const habitsDone = habitsToday.filter((h) => h.done.includes(t)).length;
+  const [custom, setCustom] = useState(false);
+  const isToday = day === t;
+  const { order, hidden } = homeLayout(s);
 
   const projectName = (id: string) => s.projects.find((p) => p.id === id)?.name || '';
+  const habitsDue = s.habits.filter((h) => !h.archived && habitDueOn(h, day));
+  const habitsDone = habitsDue.filter((h) => h.done.includes(day)).length;
+  const open = useMemo(() => openTasksFor(s.tasks, day), [s.tasks, day]);
+  const doneToday = s.tasks.filter((x) => doneOn(x, day));
 
-  const todayTasks = useMemo(
-    () =>
-      s.tasks
-        .filter((x) => x.status !== 'done' || (x.doneAt && new Date(x.doneAt).toDateString() === new Date().toDateString() && x.due && x.due <= t))
-        .filter((x) => (x.due && x.due <= t) || (x.status === 'doing') || (x.priority === 'p0' && x.status !== 'done'))
-        .sort((a, b) => Number(a.status === 'done') - Number(b.status === 'done') || (a.due || '9').localeCompare(b.due || '9') || prioRank(a.priority) - prioRank(b.priority)),
-    [s.tasks, t]
-  );
+  // anneau de la journée : tâches + habitudes
+  const total = open.length + doneToday.length + habitsDue.length;
+  const achieved = doneToday.length + habitsDone;
 
-  const upcoming = s.tasks
-    .filter((x) => x.status !== 'done' && x.due && x.due > t && daysBetween(t, x.due) <= 7)
-    .sort((a, b) => a.due!.localeCompare(b.due!));
-
-  const lastWorkout = [...s.workouts].filter((w) => w.finishedAt).sort((a, b) => b.date.localeCompare(a.date))[0];
-  const weight = s.bodyWeights[s.bodyWeights.length - 1];
-  const weekAgo = s.bodyWeights.filter((b) => daysBetween(b.date, t) >= 7).slice(-1)[0];
-  const workoutsMonth = s.workouts.filter((w) => w.finishedAt && w.date.startsWith(t.slice(0, 7))).length;
-
-  const subs = monthlySubs(s);
-  const vs = vintedStats(s.vinted);
-  const activeProjects = s.projects.filter((p) => !p.archived && p.status !== 'termine');
-  const openCount = (pid: string) => s.tasks.filter((x) => x.projectId === pid && x.status !== 'done').length;
-
-  const toggleHabit = (id: string) => {
-    haptic();
-    update((d) => {
-      const h = d.habits.find((x) => x.id === id)!;
-      h.done = h.done.includes(t) ? h.done.filter((x) => x !== t) : [...h.done, t];
-    });
-  };
-  const toggleTask = (id: string) => {
-    haptic();
-    update((d) => {
-      const x = d.tasks.find((k) => k.id === id)!;
-      x.status = x.status === 'done' ? 'todo' : 'done';
-      x.doneAt = x.status === 'done' ? Date.now() : undefined;
-    });
-  };
-
+  const title = isToday ? "Aujourd'hui" : daysBetween(t, day) === 1 ? 'Demain' : parseDate(day).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric' });
   const dateLabel = parseDate(t).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  const sections: Record<HomeSection, JSX.Element | null> = {
+    tasks: <TasksSection key="tasks" day={day} open={open} done={doneToday} onOpen={setOpenTask} projectName={projectName} />,
+    habits: habitsDue.length ? <HabitsSection key="habits" day={day} /> : null,
+    goal: <GoalSection key="goal" onEdit={() => setEditGoal(true)} />,
+    upcoming: isToday ? <UpcomingSection key="upcoming" onOpen={setOpenTask} projectName={projectName} /> : null,
+    overview: <OverviewSection key="overview" />
+  };
 
   return (
     <>
-      <div className="page-head">
-        <div>
-          <div className="faint small" style={{ textTransform: 'capitalize' }}>{dateLabel}</div>
-          <h1 className="page-title">{greeting()} {s.settings.name}</h1>
+      <header className="today-head">
+        <div className="grow">
+          <div className="today-kicker">{greeting()} {s.settings.name} · <span style={{ textTransform: 'none' }}>{dateLabel}</span></div>
+          <h1 className="page-title" style={{ textTransform: 'capitalize' }}>{title}</h1>
         </div>
-        <div className="row" style={{ gap: 4 }}>
-          <span className="hide-desktop"><SyncBadge /></span>
-          <button className="icon-btn hide-desktop" onClick={() => go('settings')} aria-label="Réglages"><Settings size={18} /></button>
-        </div>
-      </div>
+        <span className="hide-desktop"><SyncBadge compact /></span>
+        <DayRing value={achieved} total={total} />
+        <button className="icon-btn hide-desktop" onClick={() => go('settings')} aria-label="Réglages"><Settings size={19} /></button>
+      </header>
 
-      {/* ---------- OBJECTIF PRINCIPAL ---------- */}
-      <button className="hero card-click" onClick={() => setEditGoal(true)}>
-        <svg className="hero-ring" width="220" height="220" viewBox="0 0 220 220"><circle cx="110" cy="110" r="90" fill="none" stroke="currentColor" strokeWidth="26" /></svg>
-        <div className="label"><Target size={13} /> OBJECTIF PRINCIPAL</div>
-        <div className="goal">{goal.title}</div>
-        <div className="value">{eur(mrr)}<span>/ {eur(goal.target)}</span></div>
-        <div className="bar"><div style={{ width: pct + '%' }} /></div>
-        <div className="meta">
-          <span><b>{num(pct)} %</b> atteint</span>
-          <span><b>{daysLeft}</b> jours restants</span>
-          <span>il faut <b>+{eur(perMonth)}</b>/mois</span>
-        </div>
-      </button>
+      <DayStrip day={day} onPick={(d) => { haptic(); setDay(d); }} />
 
-      {/* ---------- AUJOURD'HUI ---------- */}
-      <div className="section-title">
-        <span>Aujourd'hui</span>
-        <span className="faint">{habitsDone}/{habitsToday.length} habitudes</span>
-      </div>
-      {habitsToday.length > 0 && (
-        <div className="habit-chips" style={{ marginBottom: 10 }}>
-          {habitsToday.map((h) => {
-            const on = h.done.includes(t);
-            return (
-              <button key={h.id} className={'habit-chip' + (on ? ' on' : '')} onClick={() => toggleHabit(h.id)}>
-                <span className="dot">{on && <CheckIcon size={11} strokeWidth={3.2} />}</span>
-                {h.name}
-              </button>
-            );
-          })}
-        </div>
+      {order.filter((k) => !hidden.includes(k)).map((k) => sections[k])}
+
+      {!isConnected() && (
+        <button className="card card-click card-pad row" style={{ marginTop: 18, display: 'flex' }} onClick={() => go('settings')}>
+          <span className="grow"><b style={{ fontWeight: 600 }}>Synchro désactivée</b><span className="faint small" style={{ display: 'block' }}>Connecte ton repo GitHub privé pour retrouver tes données sur tous tes appareils.</span></span>
+          <ArrowUpRight size={15} className="faint" />
+        </button>
       )}
-      <div className="list">
-        {todayTasks.length === 0 && <div className="list-empty">Rien d'urgent aujourd'hui. Profite pour avancer sur un gros sujet.</div>}
-        {todayTasks.map((x) => (
-          <button key={x.id} className="list-item" onClick={() => setOpenTask(x.id)}>
-            <Check on={x.status === 'done'} onClick={() => toggleTask(x.id)} />
-            <div className="grow">
-              <div className="ellipsis" style={{ fontWeight: 500, textDecoration: x.status === 'done' ? 'line-through' : undefined, color: x.status === 'done' ? 'var(--text-3)' : undefined }}>{x.title}</div>
-              <div className="faint small ellipsis">{projectName(x.projectId)}{x.status === 'doing' ? ' · En cours' : ''}</div>
-            </div>
-            <PriorityIcon p={x.priority} />
-            <DueChip due={x.due} done={x.status === 'done'} />
+
+      <button className="btn btn-ghost customize-btn" onClick={() => setCustom(true)}><SlidersHorizontal size={14} /> Personnaliser l'accueil</button>
+
+      <TaskSheet taskId={openTask} onClose={() => setOpenTask(null)} />
+      <GoalSheet open={editGoal} onClose={() => setEditGoal(false)} />
+      <HomeSheet open={custom} onClose={() => setCustom(false)} />
+    </>
+  );
+}
+
+/* ---------- Anneau de progression du jour ---------- */
+function DayRing({ value, total }: { value: number; total: number }) {
+  const pct = total ? clamp(value / total) : 0;
+  const r = 17, c = 2 * Math.PI * r;
+  return (
+    <div className={'day-ring' + (total && value >= total ? ' full' : '')} title={`${value}/${total} faits aujourd'hui`}>
+      <svg width="44" height="44" viewBox="0 0 44 44">
+        <circle cx="22" cy="22" r={r} fill="none" stroke="var(--track)" strokeWidth="4" />
+        <circle cx="22" cy="22" r={r} fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeOpacity={pct ? 1 : 0} strokeDasharray={c} strokeDashoffset={c * (1 - pct)} transform="rotate(-90 22 22)" style={{ transition: 'stroke-dashoffset .5s cubic-bezier(.2,.8,.2,1)' }} />
+      </svg>
+      <span>{value}/{total}</span>
+    </div>
+  );
+}
+
+/* ---------- Bande des 7 jours ---------- */
+function DayStrip({ day, onPick }: { day: string; onPick: (d: string) => void }) {
+  const s = useAppState();
+  const t = today();
+  const days = Array.from({ length: 7 }, (_, i) => addDays(t, i));
+  return (
+    <div className="day-strip" role="tablist">
+      {days.map((d) => {
+        const n = openTasksFor(s.tasks, d).length;
+        return (
+          <button key={d} role="tab" aria-selected={d === day} className={'ds' + (d === day ? ' on' : '') + (d === t ? ' is-today' : '')} onClick={() => onPick(d)}>
+            <span className="ds-wd">{dayShort(d)}</span>
+            <span className="ds-num">{parseDate(d).getDate()}</span>
+            <span className="ds-dots">{Array.from({ length: Math.min(n, 3) }, (_, i) => <i key={i} />)}</span>
           </button>
-        ))}
+        );
+      })}
+    </div>
+  );
+}
+
+/* ---------- Tâches ---------- */
+function TasksSection({ day, open, done, onOpen, projectName }: { day: string; open: ReturnType<typeof openTasksFor>; done: State['tasks']; onOpen: (id: string) => void; projectName: (id: string) => string }) {
+  const t = today();
+  const [showDone, setShowDone] = useState(false);
+  const late = day === t ? open.filter((x) => x.due && x.due < t) : [];
+  const main = open.filter((x) => !late.includes(x));
+  return (
+    <section className="home-section">
+      <div className="section-title">
+        <span>Tâches<span className="count">{open.length}</span></span>
+        {late.length > 0 && (
+          <button className="link-btn" onClick={() => moveTasksTo(late.map((x) => x.id), t)}>Tout pour aujourd'hui <ArrowRight size={12} /></button>
+        )}
       </div>
-      {upcoming.length > 0 && (
+
+      {late.length > 0 && (
         <>
-          <div className="section-title"><span>Cette semaine<span className="count">{upcoming.length}</span></span></div>
-          <div className="list">
-            {upcoming.slice(0, 5).map((x) => (
-              <button key={x.id} className="list-item" onClick={() => setOpenTask(x.id)}>
-                <Check on={false} onClick={() => toggleTask(x.id)} />
-                <div className="grow ellipsis" style={{ fontWeight: 500 }}>{x.title}</div>
-                <span className="faint small">{projectName(x.projectId)}</span>
-                <span className="chip">{fmtDate(x.due, { withDay: true })}</span>
-              </button>
-            ))}
+          <div className="sub-label danger-text">En retard · {late.length}</div>
+          <div className="list" style={{ marginBottom: 10 }}>
+            {late.map((x) => <TaskRow key={x.id} task={x} project={projectName(x.projectId)} onOpen={() => onOpen(x.id)} day={day} />)}
           </div>
         </>
       )}
 
-      {/* ---------- LES 3 GRANDS GROUPES ---------- */}
+      <div className="list">
+        {main.map((x) => <TaskRow key={x.id} task={x} project={projectName(x.projectId)} onOpen={() => onOpen(x.id)} day={day} />)}
+        {main.length === 0 && late.length === 0 && (
+          <div className="list-empty">{done.length ? 'Tout est fait. Belle journée 🔥' : day === t ? 'Rien de prévu. Ajoute ce qui compte aujourd’hui ↓' : 'Rien de prévu ce jour-là.'}</div>
+        )}
+        <InlineAdd day={day} />
+      </div>
+
+      {done.length > 0 && (
+        <>
+          <button className="sub-label done-toggle" onClick={() => setShowDone(!showDone)}>
+            {done.length} terminée{done.length > 1 ? 's' : ''} {showDone ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          </button>
+          {showDone && (
+            <div className="list">
+              {done.map((x) => <TaskRow key={x.id} task={x} project={projectName(x.projectId)} onOpen={() => onOpen(x.id)} day={day} />)}
+            </div>
+          )}
+        </>
+      )}
+      {open.length > 0 && !swipeLearned() && <p className="swipe-hint hide-desktop">Glisse → pour terminer, ← pour reporter à demain</p>}
+    </section>
+  );
+}
+
+function InlineAdd({ day }: { day: string }) {
+  const [v, setV] = useState('');
+  const ref = useRef<HTMLInputElement>(null);
+  const submit = () => {
+    if (!v.trim()) return;
+    addTaskFromText(v, { due: day });
+    haptic();
+    setV('');
+    ref.current?.focus();
+  };
+  return (
+    <form className="inline-add" onSubmit={(e) => { e.preventDefault(); submit(); }}>
+      <Plus size={18} />
+      <input
+        ref={ref}
+        className="input-bare"
+        placeholder={`Ajouter pour ${fmtDate(day).toLowerCase()}…  #projet`}
+        value={v}
+        onChange={(e) => setV(e.target.value)}
+        enterKeyHint="done"
+        autoCapitalize="sentences"
+      />
+      {v.trim() && <button type="submit" className="btn btn-primary" style={{ height: 30 }}>OK</button>}
+    </form>
+  );
+}
+
+/* ---------- Habitudes ---------- */
+function HabitsSection({ day }: { day: string }) {
+  const s = useAppState();
+  const t = today();
+  const future = day > t;
+  const habits = s.habits.filter((h) => !h.archived && habitDueOn(h, day));
+  const done = habits.filter((h) => h.done.includes(day)).length;
+  const toggle = (id: string) => {
+    if (future) return;
+    haptic();
+    update((d) => {
+      const h = d.habits.find((x) => x.id === id)!;
+      h.done = h.done.includes(day) ? h.done.filter((x) => x !== day) : [...h.done, day];
+    });
+  };
+  return (
+    <section className="home-section">
+      <div className="section-title">
+        <span>Habitudes<span className="count">{done}/{habits.length}</span></span>
+        <button className="link-btn" onClick={() => go('life')}>Semaine <ArrowRight size={12} /></button>
+      </div>
+      <div className="habit-grid">
+        {habits.map((h) => {
+          const on = h.done.includes(day);
+          const streak = habitStreak(h);
+          return (
+            <button key={h.id} className={'habit-tile' + (on ? ' on' : '')} disabled={future} onClick={() => toggle(h.id)} aria-pressed={on}>
+              <span className="ht-check">{on && <svg width="12" height="12" viewBox="0 0 16 16"><path d="M3.5 8.5 6.5 11.5 12.5 5" stroke="currentColor" strokeWidth="2.6" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>}</span>
+              <span className="ht-name">{h.name}</span>
+              {streak > 1 && <span className="ht-streak"><Flame size={11} />{streak}</span>}
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/* ---------- Objectif ---------- */
+function GoalSection({ onEdit }: { onEdit: () => void }) {
+  const s = useAppState();
+  const t = today();
+  const goal = s.settings.goal;
+  const mrr = mrrTotal(s);
+  const pct = clamp(mrr / goal.target) * 100;
+  const daysLeft = Math.max(0, daysBetween(t, goal.deadline));
+  const perMonth = Math.max(0, (goal.target - mrr) / Math.max(1, daysLeft / 30.4));
+  return (
+    <section className="home-section">
+      <button className="goal-card card-click" onClick={onEdit}>
+        <div className="row-between">
+          <span className="goal-label"><Target size={13} /> {goal.title}</span>
+          <span className="goal-pct">{num(pct)} %</span>
+        </div>
+        <div className="goal-value">{eur(mrr)}<span> / {eur(goal.target)}</span></div>
+        <div className="goal-bar"><div style={{ width: pct + '%' }} /></div>
+        <div className="goal-meta"><span><b>{daysLeft}</b> jours</span><span>il faut <b>+{eur(perMonth)}</b>/mois</span></div>
+      </button>
+    </section>
+  );
+}
+
+/* ---------- À venir (14 jours) ---------- */
+function UpcomingSection({ onOpen, projectName }: { onOpen: (id: string) => void; projectName: (id: string) => string }) {
+  const s = useAppState();
+  const t = today();
+  const items = s.tasks
+    .filter((x) => x.status !== 'done' && x.due && x.due > t && daysBetween(t, x.due) <= 14)
+    .sort((a, b) => a.due!.localeCompare(b.due!));
+  if (!items.length) return null;
+  const groups = items.slice(0, 12).reduce<Record<string, typeof items>>((acc, x) => ((acc[x.due!] ||= []).push(x), acc), {});
+  return (
+    <section className="home-section">
+      <div className="section-title"><span>À venir<span className="count">{items.length}</span></span></div>
+      {Object.entries(groups).map(([d, xs]) => (
+        <div key={d} style={{ marginBottom: 10 }}>
+          <div className="sub-label">{cap(fmtDate(d, { withDay: true }))}</div>
+          <div className="list">
+            {xs.map((x) => <TaskRow key={x.id} task={x} project={projectName(x.projectId)} onOpen={() => onOpen(x.id)} day={d} />)}
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+/* ---------- Vue d'ensemble (carrousel sur iPhone) ---------- */
+function OverviewSection() {
+  const s = useAppState();
+  const t = today();
+  const mrr = mrrTotal(s);
+  const subs = monthlySubs(s);
+  const vs = vintedStats(s.vinted);
+  const habitsToday = s.habits.filter((h) => !h.archived && habitDueOn(h, t));
+  const habitsDone = habitsToday.filter((h) => h.done.includes(t)).length;
+  const lastWorkout = [...s.workouts].filter((w) => w.finishedAt).sort((a, b) => b.date.localeCompare(a.date))[0];
+  const weight = s.bodyWeights[s.bodyWeights.length - 1];
+  const weekAgo = s.bodyWeights.filter((b) => daysBetween(b.date, t) >= 7).slice(-1)[0];
+  const workoutsMonth = s.workouts.filter((w) => w.finishedAt && w.date.startsWith(t.slice(0, 7))).length;
+  const activeProjects = s.projects.filter((p) => !p.archived && p.status !== 'termine' && p.name !== 'Général');
+  const openCount = (pid: string) => s.tasks.filter((x) => x.projectId === pid && x.status !== 'done').length;
+
+  return (
+    <section className="home-section">
       <div className="section-title"><span>Vue d'ensemble</span></div>
-      <div className="grid grid-3">
+      <div className="carousel">
         <button className="card card-click group-card" onClick={() => go('life')}>
           <div className="row-between"><div className="gh"><span className="ico"><Sprout size={14} /></span>Life</div><ArrowUpRight size={15} className="faint" /></div>
           <div>
@@ -181,7 +346,7 @@ export default function Dashboard() {
         <button className="card card-click group-card" onClick={() => go('projects')}>
           <div className="row-between"><div className="gh"><span className="ico"><FolderKanban size={14} /></span>Projets</div><ArrowUpRight size={15} className="faint" /></div>
           <div className="stack gap-12">
-            {activeProjects.filter((p) => p.name !== 'Général').slice(0, 4).map((p) => {
+            {activeProjects.slice(0, 4).map((p) => {
               const cur = p.gauge.mode === 'mrr' ? p.mrr : p.gauge.current;
               return (
                 <div key={p.id}>
@@ -196,26 +361,16 @@ export default function Dashboard() {
           </div>
         </button>
       </div>
-
-      {lastWorkout === undefined && s.workouts.length === 0 && (
+      {!lastWorkout && s.workouts.length === 0 && (
         <button className="card card-click card-pad row" style={{ marginTop: 12, display: 'flex' }} onClick={() => go('life/salle')}>
           <Dumbbell size={16} /> <span className="grow">Démarre ta première séance pour suivre tes charges</span> <ArrowUpRight size={15} className="faint" />
         </button>
       )}
-
-      {!isConnected() && (
-        <button className="card card-click card-pad row" style={{ marginTop: 12, display: 'flex' }} onClick={() => go('settings')}>
-          <span className="grow"><b style={{ fontWeight: 600 }}>Synchro désactivée</b><span className="faint small" style={{ display: 'block' }}>Connecte ton repo GitHub privé pour retrouver tes données sur tous tes appareils.</span></span>
-          <ArrowUpRight size={15} className="faint" />
-        </button>
-      )}
-
-      <TaskSheet taskId={openTask} onClose={() => setOpenTask(null)} />
-      <GoalSheet open={editGoal} onClose={() => setEditGoal(false)} />
-    </>
+    </section>
   );
 }
 
+/* ---------- Réglages de l'objectif ---------- */
 function GoalSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const s = useAppState();
   const g = s.settings.goal;
@@ -231,6 +386,42 @@ function GoalSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
         <Field label="Date limite"><input type="date" className="input" value={g.deadline} onChange={(e) => setG((x) => (x.deadline = e.target.value))} /></Field>
       </div>
       <button className="btn btn-block btn-lg" onClick={() => { onClose(); go('wallet'); }}>Mettre à jour mon MRR</button>
+    </Sheet>
+  );
+}
+
+/* ---------- Personnaliser l'accueil ---------- */
+export function HomeSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const s = useAppState();
+  const { order, hidden } = homeLayout(s);
+  const save = (o: HomeSection[], h: HomeSection[]) => update((d) => { d.settings.home = { order: o, hidden: h }; });
+  const move = (i: number, dir: -1 | 1) => {
+    const j = i + dir;
+    if (j < 0 || j >= order.length) return;
+    const o = [...order];
+    [o[i], o[j]] = [o[j], o[i]];
+    haptic();
+    save(o, hidden);
+  };
+  return (
+    <Sheet open={open} onClose={onClose} title="Personnaliser l'accueil">
+      <p className="muted small" style={{ marginTop: 0 }}>Choisis ce qui s'affiche sous la bande des jours, et dans quel ordre.</p>
+      <div className="list">
+        {order.map((k, i) => {
+          const off = hidden.includes(k);
+          return (
+            <div key={k} className="list-item" style={{ opacity: off ? 0.5 : 1 }}>
+              <button className="icon-btn" aria-label={off ? 'Afficher' : 'Masquer'} onClick={() => { haptic(); save(order, off ? hidden.filter((x) => x !== k) : [...hidden, k]); }}>
+                {off ? <EyeOff size={17} /> : <Eye size={17} />}
+              </button>
+              <span className="grow" style={{ fontWeight: 500 }}>{SECTION_LABEL[k]}</span>
+              <button className="icon-btn" disabled={i === 0} style={{ opacity: i === 0 ? 0.25 : 1 }} onClick={() => move(i, -1)} aria-label="Monter"><ChevronUp size={18} /></button>
+              <button className="icon-btn" disabled={i === order.length - 1} style={{ opacity: i === order.length - 1 ? 0.25 : 1 }} onClick={() => move(i, 1)} aria-label="Descendre"><ChevronDown size={18} /></button>
+            </div>
+          );
+        })}
+      </div>
+      <button className="btn btn-ghost" style={{ marginTop: 12 }} onClick={() => save(DEFAULT_ORDER, [])}>Réinitialiser</button>
     </Sheet>
   );
 }

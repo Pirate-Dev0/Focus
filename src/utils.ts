@@ -1,4 +1,4 @@
-import type { Priority, ProjectStatus, State, Status, Habit, VintedItem } from './types';
+import type { Priority, ProjectStatus, State, Status, Habit, Task, VintedItem } from './types';
 
 export const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 
@@ -136,8 +136,42 @@ export function clamp(n: number, a = 0, b = 1) {
   return Math.max(a, Math.min(b, n));
 }
 
+// Retour haptique : vibrate() sur Android, et sur iPhone (iOS 18+) l'astuce du <input switch>
+// qui déclenche le « tic » natif quand on le bascule. Doit être appelé pendant un geste (tap, fin de swipe).
 export function haptic() {
   try {
-    navigator.vibrate?.(8);
+    if (typeof navigator.vibrate === 'function') {
+      navigator.vibrate(8);
+      return;
+    }
+    const label = document.createElement('label');
+    label.ariaHidden = 'true';
+    label.style.display = 'none';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.setAttribute('switch', '');
+    label.appendChild(input);
+    document.head.appendChild(label);
+    label.click();
+    label.remove();
   } catch {}
+}
+
+/* ---------- Tâches par jour (accueil) ---------- */
+export const doneOn = (t: Task, day: string) => t.status === 'done' && !!t.doneAt && iso(new Date(t.doneAt)) === day;
+
+// Ce qui reste à faire pour un jour donné. Aujourd'hui : en retard + du jour + en cours + urgentes sans date.
+export function openTasksFor(tasks: Task[], day: string) {
+  const t = today();
+  return tasks
+    .filter((x) => x.status !== 'done')
+    .filter((x) => (day === t ? (x.due && x.due <= t) || x.status === 'doing' || (x.priority === 'p0' && !x.due) : x.due === day))
+    .sort((a, b) => prioRank(a.priority) - prioRank(b.priority) || (a.due || '9').localeCompare(b.due || '9') || a.createdAt - b.createdAt);
+}
+
+export function dayShort(day: string) {
+  const diff = daysBetween(today(), day);
+  if (diff === 0) return 'Auj.';
+  if (diff === 1) return 'Dem.';
+  return parseDate(day).toLocaleDateString('fr-FR', { weekday: 'short' }).replace('.', '');
 }

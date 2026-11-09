@@ -1,39 +1,161 @@
-import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Check as CheckIcon, X } from 'lucide-react';
 import type { Priority, Status } from '../types';
-import { clamp } from '../utils';
+import { clamp, haptic } from '../utils';
 
-/* ---------- Sheet (bas d'écran sur iPhone, modale sur ordi) ---------- */
+/* ---------- Sheet (bas d'écran sur iPhone, modale sur ordi) ----------
+   - se ferme en glissant vers le bas (depuis la poignée, l'en-tête, ou le contenu quand il est tout en haut)
+   - anime aussi sa sortie, même quand c'est le parent qui la ferme */
+let lockCount = 0;
+function lockScroll(on: boolean) {
+  lockCount = Math.max(0, lockCount + (on ? 1 : -1));
+  document.documentElement.classList.toggle('scroll-locked', lockCount > 0);
+}
+const isDesktop = () => window.matchMedia('(min-width: 900px)').matches;
+
 export function Sheet({ open, onClose, title, children, full, actions }: { open: boolean; onClose: () => void; title?: ReactNode; children: ReactNode; full?: boolean; actions?: ReactNode }) {
+  const [mounted, setMounted] = useState(open);
+  const [closing, setClosing] = useState(false);
+  const internal = useRef(false);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  // garde le dernier contenu pour l'animation de sortie
+  const last = useRef({ title, children, actions });
+  if (open) last.current = { title, children, actions };
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const backRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+
+  if (open && !mounted) setMounted(true);
+  if (open && closing && !internal.current) setClosing(false);
+  if (!open && mounted && !closing) setClosing(true);
+
+  const requestClose = useCallback(() => {
+    internal.current = true;
+    setClosing(true);
+  }, []);
+
   useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    if (!closing) return;
+    const el = sheetRef.current;
+    if (el) { el.style.transform = ''; el.style.transition = ''; }
+    if (backRef.current) backRef.current.style.opacity = '';
+    const t = setTimeout(() => {
+      setClosing(false);
+      setMounted(false);
+      if (internal.current) {
+        internal.current = false;
+        onCloseRef.current();
+      }
+    }, 210);
+    return () => clearTimeout(t);
+  }, [closing]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && requestClose();
     window.addEventListener('keydown', onKey);
-    document.body.style.overflow = 'hidden';
+    lockScroll(true);
     return () => {
       window.removeEventListener('keydown', onKey);
-      document.body.style.overflow = '';
+      lockScroll(false);
     };
-  }, [open, onClose]);
-  if (!open) return null;
+  }, [mounted, requestClose]);
+
+  // glisser vers le bas pour fermer (iPhone)
+  useEffect(() => {
+    const el = sheetRef.current;
+    const body = bodyRef.current;
+    if (!mounted || !el || !body || isDesktop()) return;
+    let y0 = 0, x0 = 0, t0 = 0, dy = 0;
+    let mode: 'idle' | 'maybe' | 'drag' = 'idle';
+    const start = (e: TouchEvent) => {
+      mode = 'idle';
+      if (e.touches.length !== 1) return;
+      const target = e.target as HTMLElement;
+      const inBody = body.contains(target);
+      if (inBody && (body.scrollTop > 0 || target.closest('input, textarea, select, [data-nodrag]'))) return;
+      y0 = e.touches[0].clientY; x0 = e.touches[0].clientX; t0 = performance.now(); dy = 0;
+      mode = 'maybe';
+    };
+    const move = (e: TouchEvent) => {
+      if (mode === 'idle') return;
+      const y = e.touches[0].clientY - y0, x = e.touches[0].clientX - x0;
+      if (mode === 'maybe') {
+        if (Math.abs(y) < 7 && Math.abs(x) < 7) return;
+        if (y <= 0 || Math.abs(x) > Math.abs(y)) { mode = 'idle'; return; }
+        mode = 'drag';
+        el.style.transition = 'none';
+        if (backRef.current) backRef.current.style.transition = 'none';
+      }
+      e.preventDefault();
+      dy = Math.max(0, y);
+      el.style.transform = `translateY(${dy}px)`;
+      if (backRef.current) backRef.current.style.opacity = String(Math.max(0, 1 - dy / Math.max(320, el.offsetHeight)));
+    };
+    const end = () => {
+      if (mode !== 'drag') { mode = 'idle'; return; }
+      mode = 'idle';
+      const v = dy / Math.max(1, performance.now() - t0);
+      if (backRef.current) backRef.current.style.transition = '';
+      if (dy > Math.min(150, el.offsetHeight * 0.28) || (v > 0.55 && dy > 30)) {
+        el.style.transition = '';
+        requestClose();
+      } else {
+        el.style.transition = 'transform .28s cubic-bezier(.2,.9,.25,1)';
+        el.style.transform = 'translateY(0)';
+        if (backRef.current) backRef.current.style.opacity = '';
+      }
+    };
+    el.addEventListener('touchstart', start, { passive: true });
+    el.addEventListener('touchmove', move, { passive: false });
+    el.addEventListener('touchend', end);
+    el.addEventListener('touchcancel', end);
+    return () => {
+      el.removeEventListener('touchstart', start);
+      el.removeEventListener('touchmove', move);
+      el.removeEventListener('touchend', end);
+      el.removeEventListener('touchcancel', end);
+    };
+  }, [mounted, requestClose]);
+
+  if (!mounted) return null;
+  const c = open ? { title, children, actions } : last.current;
   return createPortal(
-    <>
-      <div className="sheet-backdrop" onClick={onClose} />
-      <div className={'sheet' + (full ? ' full' : '')} role="dialog">
+    <SheetCtx.Provider value={requestClose}>
+      <div ref={backRef} className={'sheet-backdrop' + (closing ? ' closing' : '')} onClick={requestClose} />
+      <div ref={sheetRef} className={'sheet' + (full ? ' full' : '') + (closing ? ' closing' : '')} role="dialog" aria-modal="true">
         <div className="sheet-grip" />
         <div className="sheet-head">
-          <h3>{title}</h3>
+          <h3>{c.title}</h3>
           <div className="row" style={{ gap: 4 }}>
-            {actions}
-            <button className="icon-btn" onClick={onClose} aria-label="Fermer"><X size={18} /></button>
+            {c.actions}
+            <button className="icon-btn" onClick={requestClose} aria-label="Fermer"><X size={18} /></button>
           </div>
         </div>
-        <div className="sheet-body">{children}</div>
+        <div ref={bodyRef} className="sheet-body">{c.children}</div>
       </div>
-    </>,
+    </SheetCtx.Provider>,
     document.body
   );
+}
+// Permet à un bouton dans la fenêtre de la fermer avec l'animation : const close = useSheetClose();
+const SheetCtx = createContext<() => void>(() => {});
+export const useSheetClose = () => useContext(SheetCtx);
+
+// iOS n'ouvre le clavier que si le focus arrive pendant le tap. On donne le focus tout de suite à un champ
+// invisible ; le vrai champ le récupère dès que la fenêtre est affichée et le clavier reste ouvert.
+export function primeKeyboard() {
+  try {
+    const el = document.createElement('input');
+    el.setAttribute('aria-hidden', 'true');
+    el.tabIndex = -1;
+    el.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;font-size:16px;border:0;padding:0;pointer-events:none';
+    document.body.appendChild(el);
+    el.focus({ preventScroll: true });
+    setTimeout(() => el.remove(), 1200);
+  } catch {}
 }
 
 export function Progress({ value, max, height = 4 }: { value: number; max: number | null; height?: number }) {
@@ -126,6 +248,17 @@ export function Segmented<T extends string>({ value, options, onChange, full }: 
   );
 }
 
+/* Rangée de chips qui défile : l'élément choisi est toujours visible à l'ouverture */
+export function ChipScroll({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    const on = el?.querySelector('.solid') as HTMLElement | null;
+    if (el && on && (on.offsetLeft + on.offsetWidth > el.clientWidth + el.scrollLeft || on.offsetLeft < el.scrollLeft)) el.scrollLeft = on.offsetLeft - 16;
+  });
+  return <div ref={ref} className="chip-scroll" data-nodrag>{children}</div>;
+}
+
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="field">
@@ -162,28 +295,47 @@ export function NumInput({ value, onChange, placeholder, className = 'input', au
   );
 }
 
-/* ---------- Toast ---------- */
-let toastMsg: string | null = null;
+/* ---------- Toast (avec bouton « Annuler » optionnel) ---------- */
+type ToastData = { id: number; msg: string; action?: { label: string; run: () => void } };
+let toastData: ToastData | null = null;
 const toastL = new Set<() => void>();
 let toastTimer: ReturnType<typeof setTimeout>;
-export function toast(msg: string) {
-  toastMsg = msg;
+const emitToast = (d: ToastData | null) => {
+  toastData = d;
   toastL.forEach((l) => l());
+};
+export function toast(msg: string, action?: { label: string; run: () => void }) {
+  emitToast({ id: Date.now(), msg, action });
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
-    toastMsg = null;
-    toastL.forEach((l) => l());
-  }, 2200);
+  toastTimer = setTimeout(() => emitToast(null), action ? 4000 : 2200);
 }
 export function Toaster() {
-  const msg = useSyncExternalStore(
+  const t = useSyncExternalStore(
     (l) => {
       toastL.add(l);
       return () => toastL.delete(l);
     },
-    () => toastMsg
+    () => toastData
   );
-  return msg ? <div className="toast">{msg}</div> : null;
+  if (!t) return null;
+  return (
+    <div className="toast" key={t.id} role="status">
+      <span className="grow">{t.msg}</span>
+      {t.action && (
+        <button
+          className="toast-action"
+          onClick={() => {
+            t.action!.run();
+            haptic();
+            clearTimeout(toastTimer);
+            emitToast(null);
+          }}
+        >
+          {t.action.label}
+        </button>
+      )}
+    </div>
+  );
 }
 
 export function Empty({ title, children }: { title: string; children?: ReactNode }) {

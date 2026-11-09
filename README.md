@@ -81,11 +81,12 @@ Coût : environ 550 minutes d'Actions par mois, alors que le compte gratuit en d
 
 | | |
 |---|---|
-| **Dashboard** | Objectif principal (jauge auto = somme du MRR des projets), habitudes du jour en un tap, tâches du jour / en retard / P0, la semaine, résumé Life · Portefeuille · Projets |
+| **Aujourd'hui** (accueil) | Bande des 7 prochains jours, tâches du jour en premier (en retard, du jour, en cours, urgentes), ajout direct dans la liste (`#projet` pour choisir le projet), habitudes en tuiles, objectif principal (jauge auto = somme du MRR), à venir sur 14 jours, résumé Life · Portefeuille · Projets. Sections réordonnables / masquables (**Personnaliser l'accueil**) |
+| **Gestes iPhone** | Glisser une tâche → pour la terminer, ← pour la reporter à demain (avec « Annuler »). Glisser une fenêtre vers le bas pour la fermer. Re-taper l'onglet actif remonte en haut. Chaque onglet garde sa page et sa position |
 | **Life → Habitudes** | Grille de la semaine, jours au choix par habitude, séries 🔥 |
 | **Life → Salle** | Programmes (Push/Pull/Legs modifiables), séance avec charges de la dernière fois pré-remplies, records, 1RM estimé, courbe par exercice, poids de corps. Terminer une séance coche l'habitude « Salle » |
 | **Portefeuille** | MRR par projet + historique, abonnements déduits pour le net mensuel, dépenses ponctuelles par mois, **Vinted séparé** (solde, bénéfice, marge, stock immobilisé) |
-| **Projets** | Un kanban par projet (À faire / En cours / Bloqué / Fait), glisser-déposer (appui long sur iPhone), checklist, priorités, échéances, jauge d'objectif (MRR ou perso) |
+| **Projets** | Un kanban par projet (À faire / En cours / Bloqué / Fait), barre de colonnes et coche rapide sur iPhone, glisser-déposer (appui long), checklist, priorités, échéances, jauge d'objectif (MRR ou perso) |
 | **Ajout rapide** | Bouton + (ou touche `C` sur ordi) : tâche, dépense, article Vinted, poids |
 | **Raccourcis ordi** | `C` ajout rapide · `1` `2` `3` `4` sections · `Échap` fermer |
 

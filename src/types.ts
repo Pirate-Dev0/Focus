@@ -89,8 +89,11 @@ export interface VintedItem {
   link?: string;
 }
 
+export type HomeSection = 'tasks' | 'habits' | 'goal' | 'upcoming' | 'overview';
+
 export interface Settings {
   name: string;
+  home?: { order: HomeSection[]; hidden: HomeSection[] };
   goal: { title: string; target: number; deadline: string; start: number };
   theme: 'system' | 'light' | 'dark';
   notifyHabitsHour: number;

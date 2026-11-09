@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { DndContext, DragOverlay, PointerSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent, closestCorners } from '@dnd-kit/core';
 import { ArrowLeft, ExternalLink, ListChecks, Plus, Settings2, AlignLeft } from 'lucide-react';
 import { update, useAppState } from '../store';
 import { go } from '../router';
-import { PriorityIcon, Progress, StatusIcon, Empty } from '../components/ui';
+import { Check, PriorityIcon, Progress, StatusIcon, Empty } from '../components/ui';
+import { setTaskDone } from '../actions';
 import { DueChip, TaskSheet } from '../components/TaskSheet';
 import { ProjectSheet } from './Projects';
 import type { Status, Task } from '../types';
@@ -17,6 +18,8 @@ export default function Board({ id }: { id: string }) {
   const [dragId, setDragId] = useState<string | null>(null);
   const [adding, setAdding] = useState<Status | null>(null);
   const [draft, setDraft] = useState('');
+  const [activeCol, setActiveCol] = useState(0);
+  const boardRef = useRef<HTMLDivElement>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 6 } })
@@ -68,6 +71,25 @@ export default function Board({ id }: { id: string }) {
   const done = tasks.filter((t) => t.status === 'done').length;
   const dragged = s.tasks.find((t) => t.id === dragId);
 
+  // iPhone : une colonne à la fois, la barre du haut permet de sauter de l'une à l'autre
+  const colLeft = (i: number) => {
+    const b = boardRef.current;
+    const c = b?.children[i] as HTMLElement | undefined;
+    return b && c ? c.offsetLeft - b.offsetLeft - 16 : 0;
+  };
+  const jumpTo = (i: number) => {
+    haptic();
+    setActiveCol(i);
+    boardRef.current?.scrollTo({ left: colLeft(i), behavior: 'smooth' });
+  };
+  const onBoardScroll = () => {
+    const b = boardRef.current;
+    if (!b) return;
+    let best = 0;
+    STATUSES.forEach((_, i) => { if (Math.abs(colLeft(i) - b.scrollLeft) < Math.abs(colLeft(best) - b.scrollLeft)) best = i; });
+    if (best !== activeCol) setActiveCol(best);
+  };
+
   return (
     <>
       <div className="row" style={{ marginBottom: 6, gap: 4 }}>
@@ -94,8 +116,16 @@ export default function Board({ id }: { id: string }) {
         <Progress value={cur} max={p.gauge.target} height={6} />
       </button>
 
+      <div className="col-tabs hide-desktop" role="tablist">
+        {STATUSES.map((st, i) => (
+          <button key={st} role="tab" aria-selected={activeCol === i} className={activeCol === i ? 'on' : ''} onClick={() => jumpTo(i)}>
+            <StatusIcon status={st} size={13} /> {STATUS_LABEL[st]} <span className="count">{col(st).length}</span>
+          </button>
+        ))}
+      </div>
+
       <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onStart} onDragEnd={onEnd} onDragCancel={() => setDragId(null)}>
-        <div className="board">
+        <div className="board" ref={boardRef} onScroll={onBoardScroll}>
           {STATUSES.map((st) => (
             <Column key={st} status={st} count={col(st).length}>
               {col(st).map((t) => <CardItem key={t.id} t={t} onOpen={() => setOpenTask(t.id)} />)}
@@ -123,7 +153,7 @@ export default function Board({ id }: { id: string }) {
           ))}
         </div>
         <DragOverlay dropAnimation={{ duration: 180, easing: 'cubic-bezier(.2,.8,.2,1)' }}>
-          {dragged ? <CardBody t={dragged} className="kcard overlay" /> : null}
+          {dragged ? <CardBody t={dragged} className="kcard overlay" withCheck /> : null}
         </DragOverlay>
       </DndContext>
 
@@ -153,21 +183,29 @@ function CardItem({ t, onOpen }: { t: Task; onOpen: () => void }) {
   return (
     <div ref={drop.setNodeRef}>
       <div ref={setNodeRef} {...attributes} {...listeners} onClick={onOpen}>
-        <CardBody t={t} className={'kcard' + (isDragging ? ' dragging' : '')} />
+        <CardBody t={t} className={'kcard' + (isDragging ? ' dragging' : '')} withCheck />
       </div>
     </div>
   );
 }
 
-function CardBody({ t, className }: { t: Task; className: string }) {
+function CardBody({ t, className, withCheck }: { t: Task; className: string; withCheck?: boolean }) {
   const cl = t.checklist.length;
   const cd = t.checklist.filter((c) => c.done).length;
   const hasMeta = t.priority !== 'none' || t.due || cl || t.notes;
   return (
     <div className={className} style={{ cursor: 'pointer' }}>
-      <div className="t" style={{ textDecoration: t.status === 'done' ? 'line-through' : undefined, color: t.status === 'done' ? 'var(--text-3)' : undefined }}>{t.title}</div>
+      <div className="row" style={{ alignItems: 'flex-start', gap: 10 }}>
+        {withCheck && (
+          // la coche ne doit pas démarrer un glisser-déposer
+          <span onPointerDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()} style={{ marginTop: -1 }}>
+            <Check on={t.status === 'done'} onClick={() => { haptic(); setTaskDone(t.id, t.status !== 'done'); }} />
+          </span>
+        )}
+        <div className="t grow" style={{ textDecoration: t.status === 'done' ? 'line-through' : undefined, color: t.status === 'done' ? 'var(--text-3)' : undefined }}>{t.title}</div>
+      </div>
       {hasMeta ? (
-        <div className="m">
+        <div className="m" style={withCheck ? { paddingLeft: 32 } : undefined}>
           {t.priority !== 'none' && <PriorityIcon p={t.priority} size={13} />}
           <DueChip due={t.due} done={t.status === 'done'} />
           {cl > 0 && <span className="row" style={{ gap: 3 }}><ListChecks size={12} /> {cd}/{cl}</span>}

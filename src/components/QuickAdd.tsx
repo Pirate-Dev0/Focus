@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { CheckSquare, Receipt, Shirt, Scale } from 'lucide-react';
 import { getState, update, useAppState } from '../store';
-import { Field, NumInput, Segmented, Sheet, toast, PriorityIcon } from './ui';
+import { ChipScroll, Field, NumInput, Segmented, Sheet, toast, PriorityIcon } from './ui';
 import type { Priority } from '../types';
-import { addDays, haptic, PRIORITY_LABEL, today, uid } from '../utils';
+import { addDays, fmtDate, haptic, PRIORITY_LABEL, today, uid } from '../utils';
+import { addTaskFromText, projectFromTag } from '../actions';
 
 type Kind = 'task' | 'expense' | 'vinted' | 'weight';
 
 export const EXPENSE_CATS = ['Outils & SaaS', 'Hébergement', 'Abonnements perso', 'Bouffe', 'Salle & santé', 'Transport', 'Fringues', 'Sorties', 'Autre'];
 export const VINTED_CATS = ['Vêtements', 'Chaussures', 'Accessoires', 'Électronique', 'Autre'];
 
-export function QuickAdd({ open, onClose, defaultProject }: { open: boolean; onClose: () => void; defaultProject?: string }) {
+export function QuickAdd({ open, onClose, defaultProject, defaultDue }: { open: boolean; onClose: () => void; defaultProject?: string; defaultDue?: string }) {
   const s = useAppState();
   const [kind, setKind] = useState<Kind>('task');
   const projects = s.projects.filter((p) => !p.archived);
@@ -34,25 +35,33 @@ export function QuickAdd({ open, onClose, defaultProject }: { open: boolean; onC
   const [kg, setKg] = useState<number>(0);
 
   const firstRef = useRef<HTMLInputElement>(null);
+  // « #wake » dans le titre → le projet WakeTap s'allume
+  const tagged = kind === 'task' ? projectFromTag(title) : null;
 
   useEffect(() => {
     if (!open) return;
     const st = getState();
+    setKind('task');
     setProjectId(defaultProject || st.projects.find((p) => p.name === 'Général')?.id || st.projects[0]?.id || '');
-    setTitle(''); setDue(''); setPrio('none'); setName(''); setAmount(0); setVName(''); setVBuy(0); setVTarget(0);
+    setTitle(''); setDue(defaultDue || ''); setPrio('none'); setName(''); setAmount(0); setVName(''); setVBuy(0); setVTarget(0);
     const last = st.bodyWeights[st.bodyWeights.length - 1];
     setKg(last?.kg || 0);
-    setTimeout(() => firstRef.current?.focus(), 250);
-  }, [open, defaultProject]);
+    // le clavier a déjà été ouvert par le tap sur « + » (primeKeyboard) : on passe le focus au vrai champ
+    requestAnimationFrame(() => firstRef.current?.focus({ preventScroll: true }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // changer de type garde le clavier ouvert sur le bon champ
+  useEffect(() => {
+    if (open && kind !== 'weight') requestAnimationFrame(() => firstRef.current?.focus({ preventScroll: true }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kind]);
 
   const submit = () => {
     if (kind === 'task') {
       if (!title.trim()) return;
-      update((d) => {
-        const order = d.tasks.filter((t) => t.projectId === projectId && t.status === 'todo').length;
-        d.tasks.push({ id: uid(), projectId, title: title.trim(), notes: '', status: 'todo', priority: prio, due: due || undefined, checklist: [], createdAt: Date.now(), order });
-      });
-      toast('Tâche ajoutée');
+      const task = addTaskFromText(title, { projectId, due: due || undefined, priority: prio });
+      toast(task?.due ? `Tâche ajoutée pour ${fmtDate(task.due).toLowerCase()}` : 'Tâche ajoutée');
     } else if (kind === 'expense') {
       if (!name.trim() || !amount) return;
       update((d) => {
@@ -113,24 +122,26 @@ export function QuickAdd({ open, onClose, defaultProject }: { open: boolean; onC
       <div onKeyDown={onEnter}>
         {kind === 'task' && (
           <>
-            <input ref={firstRef} className="input-bare title-input" placeholder="Que faut-il faire ?" value={title} onChange={(e) => setTitle(e.target.value)} style={{ marginBottom: 16 }} />
+            <input ref={firstRef} className="input-bare title-input" placeholder="Que faut-il faire ?" value={title} onChange={(e) => setTitle(e.target.value)} style={{ marginBottom: 16 }} enterKeyHint="done" autoCapitalize="sentences" />
             <Field label="Projet">
-              <select className="input" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-                {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
+              <ChipScroll>
+                {projects.map((p) => (
+                  <button key={p.id} type="button" className={'chip chip-lg' + ((tagged?.project.id || projectId) === p.id ? ' solid' : '')} onClick={() => setProjectId(p.id)}>{p.name}</button>
+                ))}
+              </ChipScroll>
             </Field>
             <Field label="Échéance">
               <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
                 {dueOpts.map((o) => (
-                  <button key={o.l} type="button" className={'chip' + (due === o.v ? ' solid' : '')} style={{ height: 30, padding: '0 10px' }} onClick={() => setDue(o.v)}>{o.l}</button>
+                  <button key={o.l} type="button" className={'chip chip-lg' + (due === o.v ? ' solid' : '')} onClick={() => setDue(o.v)}>{o.l}</button>
                 ))}
-                <input type="date" className="input" style={{ width: 150, height: 30 }} value={due} onChange={(e) => setDue(e.target.value)} />
+                <input type="date" className="input" style={{ width: 150, height: 34 }} value={due} onChange={(e) => setDue(e.target.value)} />
               </div>
             </Field>
             <Field label="Priorité">
               <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
                 {(['p0', 'p1', 'p2', 'p3', 'none'] as Priority[]).map((p) => (
-                  <button key={p} type="button" className={'chip' + (prio === p ? ' solid' : '')} style={{ height: 30, padding: '0 10px' }} onClick={() => setPrio(p)}>
+                  <button key={p} type="button" className={'chip chip-lg' + (prio === p ? ' solid' : '')} onClick={() => setPrio(p)}>
                     <PriorityIcon p={p} size={12} /> {PRIORITY_LABEL[p]}
                   </button>
                 ))}
@@ -141,7 +152,7 @@ export function QuickAdd({ open, onClose, defaultProject }: { open: boolean; onC
 
         {kind === 'expense' && (
           <>
-            <input ref={firstRef} className="input-bare title-input" placeholder="Nom (ex : Vercel Pro)" value={name} onChange={(e) => setName(e.target.value)} style={{ marginBottom: 16 }} />
+            <input ref={firstRef} className="input-bare title-input" placeholder="Nom (ex : Vercel Pro)" enterKeyHint="done" value={name} onChange={(e) => setName(e.target.value)} style={{ marginBottom: 16 }} />
             <div className="field-row">
               <Field label="Montant (€)"><NumInput value={amount || null} onChange={setAmount} placeholder="0" /></Field>
               <Field label="Catégorie">
@@ -156,7 +167,7 @@ export function QuickAdd({ open, onClose, defaultProject }: { open: boolean; onC
 
         {kind === 'vinted' && (
           <>
-            <input ref={firstRef} className="input-bare title-input" placeholder="Article (ex : Nike TN noires)" value={vName} onChange={(e) => setVName(e.target.value)} style={{ marginBottom: 16 }} />
+            <input ref={firstRef} className="input-bare title-input" placeholder="Article (ex : Nike TN noires)" enterKeyHint="done" value={vName} onChange={(e) => setVName(e.target.value)} style={{ marginBottom: 16 }} />
             <div className="field-row">
               <Field label="Prix d'achat (€)"><NumInput value={vBuy || null} onChange={setVBuy} placeholder="0" /></Field>
               <Field label="Revente visée (€)"><NumInput value={vTarget || null} onChange={setVTarget} placeholder="0" /></Field>

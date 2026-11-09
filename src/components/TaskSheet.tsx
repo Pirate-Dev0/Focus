@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { Plus, Trash2, X } from 'lucide-react';
 import { update, useAppState } from '../store';
 import type { Priority, Status, Task } from '../types';
-import { Check, Field, PriorityIcon, Sheet, StatusIcon, toast } from './ui';
-import { fmtDate, PRIORITIES, PRIORITY_LABEL, STATUSES, STATUS_LABEL, today, uid, haptic, daysBetween } from '../utils';
+import { Check, ChipScroll, Field, PriorityIcon, Sheet, StatusIcon, toast } from './ui';
+import { addDays, fmtDate, parseDate, PRIORITIES, PRIORITY_LABEL, STATUSES, STATUS_LABEL, today, uid, haptic, daysBetween } from '../utils';
 
 export function TaskSheet({ taskId, onClose }: { taskId: string | null; onClose: () => void }) {
   const s = useAppState();
@@ -30,6 +30,14 @@ export function TaskSheet({ taskId, onClose }: { taskId: string | null; onClose:
   };
 
   const doneCount = task.checklist.filter((c) => c.done).length;
+  const t0 = today();
+  const nextMonday = addDays(t0, ((8 - parseDate(t0).getDay()) % 7) || 7);
+  const dueOpts = [
+    { v: t0, l: "Aujourd'hui" },
+    { v: addDays(t0, 1), l: 'Demain' },
+    { v: nextMonday, l: 'Lundi pro' },
+    { v: '', l: 'Sans date' }
+  ];
 
   return (
     <Sheet
@@ -64,7 +72,7 @@ export function TaskSheet({ taskId, onClose }: { taskId: string | null; onClose:
       <Field label="Statut">
         <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
           {STATUSES.map((st) => (
-            <button key={st} className={'chip' + (task.status === st ? ' solid' : '')} style={{ height: 30, padding: '0 10px' }} onClick={() => { setStatus(st); haptic(); }}>
+            <button key={st} className={'chip chip-lg' + (task.status === st ? ' solid' : '')} onClick={() => { setStatus(st); haptic(); }}>
               <StatusIcon status={st} size={13} /> {STATUS_LABEL[st]}
             </button>
           ))}
@@ -74,23 +82,28 @@ export function TaskSheet({ taskId, onClose }: { taskId: string | null; onClose:
       <Field label="Priorité">
         <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
           {PRIORITIES.map((p) => (
-            <button key={p} className={'chip' + (task.priority === p ? ' solid' : '')} style={{ height: 30, padding: '0 10px' }} onClick={() => set((t) => (t.priority = p as Priority))}>
+            <button key={p} className={'chip chip-lg' + (task.priority === p ? ' solid' : '')} onClick={() => set((t) => (t.priority = p as Priority))}>
               <PriorityIcon p={p} size={12} /> {PRIORITY_LABEL[p]}
             </button>
           ))}
         </div>
       </Field>
 
-      <div className="field-row">
-        <Field label="Échéance">
-          <input type="date" className="input" value={task.due || ''} onChange={(e) => set((t) => (t.due = e.target.value || undefined))} />
-        </Field>
-        <Field label="Projet">
-          <select className="input" value={task.projectId} onChange={(e) => set((t) => (t.projectId = e.target.value))}>
-            {s.projects.filter((p) => !p.archived).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-        </Field>
-      </div>
+      <Field label="Échéance">
+        <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
+          {dueOpts.map((o) => (
+            <button key={o.l} className={'chip chip-lg' + ((task.due || '') === o.v ? ' solid' : '')} onClick={() => { haptic(); set((t) => (t.due = o.v || undefined)); }}>{o.l}</button>
+          ))}
+          <input type="date" className="input" style={{ width: 150, height: 34 }} value={task.due || ''} onChange={(e) => set((t) => (t.due = e.target.value || undefined))} />
+        </div>
+      </Field>
+      <Field label="Projet">
+        <ChipScroll>
+          {s.projects.filter((p) => !p.archived).map((p) => (
+            <button key={p.id} className={'chip chip-lg' + (task.projectId === p.id ? ' solid' : '')} onClick={() => set((t) => (t.projectId = p.id))}>{p.name}</button>
+          ))}
+        </ChipScroll>
+      </Field>
 
       <Field label={`Checklist${task.checklist.length ? ` · ${doneCount}/${task.checklist.length}` : ''}`}>
         <div className="list">

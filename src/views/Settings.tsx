@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bell, Download, Github, LogOut, Moon, Sun, Monitor, Upload, Smartphone, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Bell, ChevronRight, Download, Github, LogOut, Moon, Sun, Monitor, Upload, Smartphone, RefreshCw, SlidersHorizontal } from 'lucide-react';
+import { go } from '../router';
+import { HomeSheet } from './Dashboard';
 import { getState, migrate, setState, update, useAppState } from '../store';
 import { Field, NumInput, Segmented, toast } from '../components/ui';
 import { connect, currentEndpoint, disablePush, disconnect, enablePush, getConfig, pull, pushReady, syncInfo, testPush, useSyncStatus } from '../sync';
@@ -15,6 +17,7 @@ export default function Settings() {
   const [repo, setRepo] = useState('focus-data');
   const [token, setToken] = useState('');
   const [err, setErr] = useState<string | null>(null);
+  const [homeSheet, setHomeSheet] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const standalone = window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone;
   const notifOn = Boolean(endpoint && (s.pushSubs || []).some((x) => x.endpoint === endpoint));
@@ -71,6 +74,7 @@ export default function Settings() {
 
   return (
     <>
+      <button className="btn btn-ghost back-btn hide-desktop" onClick={() => go('home')}><ArrowLeft size={17} /> Aujourd'hui</button>
       <div className="page-head">
         <div>
           <h1 className="page-title">Réglages</h1>
@@ -88,7 +92,13 @@ export default function Settings() {
             { value: 'dark', label: <><Moon size={14} /> Sombre</> }
           ]} />
         </Field>
+        <button className="list-item card-click" style={{ border: '1px solid var(--border)', borderRadius: 10, marginTop: 4 }} onClick={() => setHomeSheet(true)}>
+          <SlidersHorizontal size={16} />
+          <span className="grow" style={{ fontWeight: 500 }}>Personnaliser l'accueil</span>
+          <ChevronRight size={16} className="faint" />
+        </button>
       </div>
+      <HomeSheet open={homeSheet} onClose={() => setHomeSheet(false)} />
 
       <div className="section-title"><span>Synchro GitHub</span></div>
       <div className="card card-pad">
