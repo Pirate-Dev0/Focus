@@ -993,3 +993,7 @@ input[type='time'].input.hs-time { width: 112px; height: 38px; line-height: 38px
   .hb-day { width: 17px; height: 17px; font-size: 8.5px; }
   .hb-check { font-size: 14px; }
 }
+
+/* Page Dev : services aux vrais chiffres (usage.json) */
+.status-dot.error { background: var(--danger); }
+.dev-live { gap: 8px; padding-top: 10px; border-top: 1px solid var(--border); }

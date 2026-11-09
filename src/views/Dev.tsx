@@ -26,6 +26,7 @@ import { useBridgeStatus, toggleAgentStep, completeAgentAction, toggleDevMode, c
 import type { AgentAction, AiService, AiServiceUnit } from '../types';
 import { uid, haptic, fmtInt } from '../utils';
 import { Sheet, Field, NumInput, toast } from '../components/ui';
+import { refreshUsage, useLiveUsage, type LiveService } from '../sync';
 
 const PRESET_APPS: { name: string; category: AiService['category']; unit: AiServiceUnit; icon: string; color: string; plan: string; defaultLimit: number }[] = [
   { name: 'Claude (Anthropic)', category: 'llm', unit: 'tokens', icon: 'brain', color: '#d97706', plan: 'Pro / Tier 2', defaultLimit: 1000000 },
@@ -42,6 +43,18 @@ export default function Dev() {
   const state = useAppState();
   const dev = state.dev;
   const bridgeOnline = useBridgeStatus();
+  const live = useLiveUsage();
+  // Services dont les vrais chiffres arrivent tout seuls (usage.json, GitHub Action horaire)
+  const liveFor = (srv: AiService): LiveService | undefined => (/eleven/i.test(srv.name) ? live?.services?.elevenlabs : undefined);
+  const refreshLive = async () => {
+    haptic();
+    try {
+      await refreshUsage();
+      toast('Actualisation lancée : les chiffres arrivent d’ici 1 à 2 min');
+    } catch (e: any) {
+      toast(e.message);
+    }
+  };
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editingService, setEditingService] = useState<AiService | null>(null);
@@ -539,17 +552,26 @@ export default function Dev() {
       {/* Grille des applications IA */}
       <div className="grid grid-2">
         {services.map((srv) => {
-          const hasLimit = Boolean(srv.limit && srv.limit > 0);
-          const ratio = hasLimit ? Math.min(1, srv.used / (srv.limit || 1)) : 0;
+          const lv = liveFor(srv);
+          const isLive = Boolean(lv && lv.used != null);
+          const used = isLive ? lv!.used! : srv.used;
+          const limit = isLive ? lv!.limit ?? undefined : srv.limit;
+          const unit = isLive ? (lv!.unit as AiServiceUnit) || 'credits' : srv.unit;
+          const plan = isLive && lv!.plan ? lv!.plan.charAt(0).toUpperCase() + lv!.plan.slice(1) : srv.plan;
+          const resetLabel = isLive && lv!.resetAt
+            ? new Date(lv!.resetAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+            : srv.resetDate;
+          const hasLimit = Boolean(limit && limit > 0);
+          const ratio = hasLimit ? Math.min(1, used / (limit || 1)) : 0;
           const pct = Math.round(ratio * 100);
           const isNearLimit = hasLimit && pct >= 85;
 
           const unitLabel =
-            srv.unit === 'tokens'
+            unit === 'tokens'
               ? 'tokens'
-              : srv.unit === 'chars'
+              : unit === 'chars'
               ? 'caractères'
-              : srv.unit === 'credits'
+              : unit === 'credits'
               ? 'crédits'
               : '$';
 
@@ -571,7 +593,7 @@ export default function Dev() {
                   </div>
                   <div>
                     <h3 className="dev-service-name">{srv.name}</h3>
-                    <div className="small faint">{srv.plan || 'Forfait standard'}</div>
+                    <div className="small faint">{plan || 'Forfait standard'}</div>
                   </div>
                 </div>
 
@@ -591,9 +613,9 @@ export default function Dev() {
               <div className="dev-gauge-box">
                 <div className="row-between small" style={{ marginBottom: 4 }}>
                   <span className="mono">
-                    <b>{fmtInt(srv.used)}</b>{' '}
+                    <b>{fmtInt(used)}</b>{' '}
                     <span className="faint">
-                      {hasLimit ? `/ ${fmtInt(srv.limit!)} ${unitLabel}` : unitLabel}
+                      {hasLimit ? `/ ${fmtInt(limit!)} ${unitLabel}` : unitLabel}
                     </span>
                   </span>
                   {hasLimit && (
@@ -621,16 +643,29 @@ export default function Dev() {
                   {srv.budgetUsd ? <span className="faint">/ {srv.budgetUsd} $</span> : null}
                 </div>
 
-                {srv.resetDate && (
+                {resetLabel && (
                   <span className="dev-reset-pill small faint">
-                    Reset : {srv.resetDate}
+                    Reset : {resetLabel}
                   </span>
                 )}
               </div>
 
               {srv.notes && <p className="dev-service-notes">{srv.notes}</p>}
 
-              {/* Raccourcis d'incrément rapide */}
+              {lv ? (
+                <div className="dev-live row-between small" style={{ marginTop: 12 }}>
+                  <span className="row" style={{ gap: 6, minWidth: 0 }}>
+                    <span className={'status-dot' + (lv.error ? ' error' : ' online')} />
+                    <span className={lv.error ? 'danger-text ellipsis' : 'faint ellipsis'}>
+                      {lv.error ? `Synchro auto : ${lv.error}` : 'Synchro auto · chaque heure'}
+                    </span>
+                  </span>
+                  <button type="button" className="btn btn-ghost small dev-chip-btn" onClick={refreshLive}>
+                    <RefreshCw size={11} /> Actualiser
+                  </button>
+                </div>
+              ) : (
+              /* Raccourcis d'incrément rapide */
               <div className="dev-quick-inc row" style={{ marginTop: 12 }}>
                 <span className="small faint" style={{ marginRight: 4 }}>
                   Ajouter :
@@ -657,6 +692,7 @@ export default function Dev() {
                   +50k
                 </button>
               </div>
+              )}
             </div>
           );
         })}

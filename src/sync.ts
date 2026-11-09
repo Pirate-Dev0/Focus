@@ -115,6 +115,67 @@ function mergeSubs(winner: State, other: State): State {
   return { ...winner, pushSubs: subs };
 }
 
+/* ---------- Consommation réelle des IA ----------
+   usage.json est écrit toutes les heures par la GitHub Action du repo de données (usage.mjs).
+   On le lit à part : il ne fait pas partie de l'état synchronisé, donc jamais de conflit avec data.json. */
+export interface LiveService {
+  plan?: string | null;
+  used?: number;
+  limit?: number | null;
+  unit?: string;
+  resetAt?: number | null;
+  status?: string | null;
+  error?: string;
+  fetchedAt?: number;
+}
+export interface LiveUsage { updatedAt: number; services: Record<string, LiveService | undefined> }
+const USAGE_KEY = 'focus.usage';
+let usage: LiveUsage | null = (() => {
+  try {
+    return JSON.parse(localStorage.getItem(USAGE_KEY) || 'null');
+  } catch {
+    return null;
+  }
+})();
+let usageSha: string | null = null;
+const usageL = new Set<() => void>();
+export function useLiveUsage() {
+  return useSyncExternalStore(
+    (l) => {
+      usageL.add(l);
+      return () => usageL.delete(l);
+    },
+    () => usage
+  );
+}
+
+async function readUsage(c: GhConfig) {
+  try {
+    const res = await gh(c, `/contents/usage.json?ref=${encodeURIComponent(c.branch)}`);
+    if (!res.ok) return; // 404 : la GitHub Action n'a encore rien écrit
+    const j = await res.json();
+    if (j.sha === usageSha) return;
+    usageSha = j.sha;
+    usage = JSON.parse(b64decode(j.content));
+    try {
+      localStorage.setItem(USAGE_KEY, JSON.stringify(usage));
+    } catch {}
+    usageL.forEach((l) => l());
+  } catch {}
+}
+
+// Relance tout de suite la GitHub Action (rappels + consommation IA) sans attendre l'heure suivante
+export async function refreshUsage() {
+  const c = getConfig();
+  if (!c) throw new Error('Connecte d’abord ton repo GitHub (Réglages → Synchro GitHub).');
+  const res = await gh(c, '/actions/workflows/notify.yml/dispatches', {
+    method: 'POST',
+    body: JSON.stringify({ ref: c.branch, inputs: { test: 'false' } })
+  });
+  if (res.status === 403) throw new Error("Le token n'a pas la permission Actions : Read and write.");
+  if (!res.ok) throw new Error(`GitHub ${res.status}`);
+}
+
 /* ---------- boucle de synchro ---------- */
 let queue: Promise<void> = Promise.resolve();
 const serial = (fn: () => Promise<void>) => (queue = queue.then(fn, fn));
@@ -163,6 +224,7 @@ export function pull() {
     } catch (e: any) {
       setStatus(navigator.onLine ? 'error' : 'offline', e.message);
     }
+    void readUsage(c);
   });
 }
 
