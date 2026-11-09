@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, type CSSProperties } from 'react';
 import { ArrowRight, ArrowUpRight, ChevronDown, ChevronUp, Clock, Dumbbell, Eye, EyeOff, Flame, FolderKanban, Plus, Settings, SlidersHorizontal, Snowflake, Wallet, Zap } from 'lucide-react';
 import { update, useAppState } from '../store';
 import { go } from '../router';
@@ -222,6 +222,8 @@ function InlineAdd({ day }: { day: string }) {
 }
 
 /* ---------- Habitudes ---------- */
+const SLOT_LABEL: Record<TimeOfDay, string> = { any: '', morning: 'Le matin', afternoon: 'L’après-midi', evening: 'Le soir' };
+
 function HabitsSection({ day }: { day: string }) {
   const s = useAppState();
   const t = today();
@@ -281,71 +283,77 @@ function HabitsSection({ day }: { day: string }) {
           const curVal = h.values?.[day] ?? 0;
           const target = h.targetValue || 1;
           const isNumeric = h.kind === 'numeric';
+          const num = (n: number) => n.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+          const sub = isNumeric
+            ? `${num(curVal)} / ${num(target)} ${h.unit || ''}`.trim()
+            : frozen
+              ? 'Joker actif'
+              : h.reminderTime
+                ? `Rappel à ${h.reminderTime}`
+                : h.timeOfDay && h.timeOfDay !== 'any'
+                  ? SLOT_LABEL[h.timeOfDay]
+                  : '';
 
           return (
             <div
               key={h.id}
               className={'habit-tile' + (on ? ' on' : '') + (frozen ? ' frozen' : '')}
-              style={{ cursor: future ? 'default' : 'pointer' }}
+              style={{ cursor: future ? 'default' : 'pointer', '--c': h.color || '#3b82f6' } as CSSProperties}
               onClick={() => toggle(h)}
               role="button"
               tabIndex={0}
               aria-pressed={on}
             >
+              <span className={'ht-emoji' + (h.emoji ? '' : ' letter')}>{h.emoji || h.name.trim().charAt(0).toUpperCase()}</span>
+
+              <div className="ht-main">
+                <div className="ht-name">{h.name}</div>
+                {sub && (
+                  <div className="ht-sub">
+                    {h.reminderTime && !isNumeric && !frozen && <Clock size={11} />}
+                    {sub}
+                  </div>
+                )}
+                {isNumeric && (
+                  <div className="ht-bar"><i style={{ width: `${Math.min(100, (curVal / target) * 100)}%` }} /></div>
+                )}
+              </div>
+
+              {isNumeric && !on && !future && (
+                <button
+                  type="button"
+                  className="ht-step"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    addStep(h);
+                  }}
+                  title={`Ajouter +${h.step || 1}`}
+                >
+                  +{num(h.step || 1)}
+                </button>
+              )}
+              {streak > 1 && (
+                <span className="ht-streak" title={`${streak} jours consécutifs`}>
+                  <Flame size={12} />{streak}
+                </span>
+              )}
+
               <button
                 type="button"
                 className="ht-check"
                 disabled={future}
+                aria-label={on ? 'Marquer comme non faite' : 'Marquer comme faite'}
                 onClick={(e) => {
                   e.stopPropagation();
                   toggle(h);
                 }}
               >
                 {on ? (
-                  <svg width="12" height="12" viewBox="0 0 16 16"><path d="M3.5 8.5 6.5 11.5 12.5 5" stroke="currentColor" strokeWidth="2.6" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  <svg width="14" height="14" viewBox="0 0 16 16"><path d="M3.5 8.5 6.5 11.5 12.5 5" stroke="currentColor" strokeWidth="2.6" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
                 ) : frozen ? (
-                  <Snowflake size={11} color="#38bdf8" />
+                  <Snowflake size={13} color="#38bdf8" />
                 ) : null}
               </button>
-
-              <div className="grow" style={{ minWidth: 0 }}>
-                <div className="ht-name" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  {h.emoji && <span>{h.emoji}</span>}
-                  <span className="ellipsis">{h.name}</span>
-                </div>
-                {isNumeric ? (
-                  <div className="faint small" style={{ fontSize: 11, marginTop: 2 }}>
-                    {curVal} / {target} {h.unit || ''}
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="row" style={{ gap: 4, alignItems: 'center' }}>
-                {isNumeric && !on && !future && (
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    style={{ height: 26, padding: '0 6px', fontSize: 11, fontWeight: 700, borderRadius: 6, border: '1px solid var(--border)' }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      addStep(h);
-                    }}
-                    title={`Ajouter +${h.step || 1}`}
-                  >
-                    +{h.step || 1}
-                  </button>
-                )}
-                {streak > 1 && (
-                  <span className="ht-streak" title={`${streak} jours consécutifs`}>
-                    <Flame size={11} />{streak}
-                  </span>
-                )}
-                {h.reminderTime && !streak && (
-                  <span className="ht-streak" title={`Rappel à ${h.reminderTime}`}>
-                    <Clock size={10} />
-                  </span>
-                )}
-              </div>
             </div>
           );
         })}
