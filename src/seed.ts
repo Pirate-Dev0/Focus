@@ -39,7 +39,7 @@ export function seed(): State {
     updatedAt: 0, // 0 = jamais modifié : le cloud gagne toujours au premier login
     settings: {
       name: 'Ethan',
-      home: { order: ['tasks', 'habits', 'goal', 'upcoming', 'overview'], hidden: [] },
+      home: { order: ['tasks', 'habits', 'upcoming', 'overview'], hidden: [] },
       goal: { title: '10 000 € de MRR', target: 10000, deadline: '2027-12-31', start: 0 },
       theme: 'system',
       notifyHabitsHour: 21,

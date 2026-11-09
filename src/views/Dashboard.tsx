@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { ArrowRight, ArrowUpRight, ChevronDown, ChevronUp, Dumbbell, Eye, EyeOff, Flame, FolderKanban, Plus, Settings, SlidersHorizontal, Sprout, Target, Wallet } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, CalendarClock, ChevronDown, ChevronUp, Dumbbell, Eye, EyeOff, Flag, Flame, FolderKanban, HeartPulse, Plus, Settings, SlidersHorizontal, Target, TrendingUp, Wallet } from 'lucide-react';
 import { update, useAppState } from '../store';
 import { go } from '../router';
 import { Field, NumInput, Progress, Sheet, Sparkline } from '../components/ui';
@@ -23,7 +23,8 @@ const SECTION_LABEL: Record<HomeSection, string> = {
   overview: "Vue d'ensemble"
 };
 const swipeLearned = () => { try { return localStorage.getItem('focus.swipeLearned') === '1'; } catch { return false; } };
-const DEFAULT_ORDER: HomeSection[] = ['tasks', 'habits', 'goal', 'upcoming', 'overview'];
+// L'objectif n'est plus dans la liste : il est fixé tout en haut, au-dessus des jours.
+const DEFAULT_ORDER: HomeSection[] = ['tasks', 'habits', 'upcoming', 'overview'];
 
 export function homeLayout(s: State) {
   const h = s.settings.home;
@@ -57,7 +58,7 @@ export default function Dashboard() {
   const sections: Record<HomeSection, JSX.Element | null> = {
     tasks: <TasksSection key="tasks" day={day} open={open} done={doneToday} onOpen={setOpenTask} projectName={projectName} />,
     habits: habitsDue.length ? <HabitsSection key="habits" day={day} /> : null,
-    goal: <GoalSection key="goal" onEdit={() => setEditGoal(true)} />,
+    goal: null,
     upcoming: isToday ? <UpcomingSection key="upcoming" onOpen={setOpenTask} projectName={projectName} /> : null,
     overview: <OverviewSection key="overview" />
   };
@@ -73,6 +74,8 @@ export default function Dashboard() {
         <DayRing value={achieved} total={total} />
         <button className="icon-btn hide-desktop" onClick={() => go('settings')} aria-label="Réglages"><Settings size={19} /></button>
       </header>
+
+      <GoalHero onEdit={() => setEditGoal(true)} />
 
       <DayStrip day={day} onPick={(d) => { haptic(); setDay(d); }} />
 
@@ -244,27 +247,41 @@ function HabitsSection({ day }: { day: string }) {
   );
 }
 
-/* ---------- Objectif ---------- */
-function GoalSection({ onEdit }: { onEdit: () => void }) {
+/* ---------- Objectif principal : en tête de l'accueil, c'est la motivation ---------- */
+const MILESTONES = [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1]; // paliers intermédiaires (en part de la cible)
+
+function GoalHero({ onEdit }: { onEdit: () => void }) {
   const s = useAppState();
   const t = today();
   const goal = s.settings.goal;
   const mrr = mrrTotal(s);
-  const pct = clamp(mrr / goal.target) * 100;
+  const target = Math.max(1, goal.target);
+  const pct = clamp(mrr / target) * 100;
+  const reached = mrr >= target;
   const daysLeft = Math.max(0, daysBetween(t, goal.deadline));
-  const perMonth = Math.max(0, (goal.target - mrr) / Math.max(1, daysLeft / 30.4));
+  const perMonth = Math.max(0, (target - mrr) / Math.max(1, daysLeft / 30.4));
+  const next = MILESTONES.map((f) => Math.round(target * f)).find((m) => m > mrr) ?? target;
   return (
-    <section className="home-section">
-      <button className="goal-card card-click" onClick={onEdit}>
-        <div className="row-between">
-          <span className="goal-label"><Target size={13} /> {goal.title}</span>
-          <span className="goal-pct">{num(pct)} %</span>
-        </div>
-        <div className="goal-value">{eur(mrr)}<span> / {eur(goal.target)}</span></div>
-        <div className="goal-bar"><div style={{ width: pct + '%' }} /></div>
-        <div className="goal-meta"><span><b>{daysLeft}</b> jours</span><span>il faut <b>+{eur(perMonth)}</b>/mois</span></div>
-      </button>
-    </section>
+    <button className={'goal-hero' + (reached ? ' reached' : '')} onClick={onEdit} aria-label={`${goal.title} : ${num(pct)} %. Modifier l'objectif`}>
+      <span className="gh-aura" aria-hidden="true" />
+      <span className="gh-top">
+        <span className="gh-title"><Target size={15} strokeWidth={2.4} /> {goal.title}</span>
+        <span className="gh-pct">{num(pct)} %</span>
+      </span>
+      <span className="gh-value">
+        <span className="gh-num">{eur(mrr)}</span>
+        <span className="gh-of">/ {eur(target)}</span>
+      </span>
+      <span className="gh-bar" aria-hidden="true">
+        {[25, 50, 75].map((m) => <i key={m} className="gh-tick" style={{ left: m + '%' }} />)}
+        <i className="gh-fill" style={{ width: pct + '%' }}><i className="gh-knob" /></i>
+      </span>
+      <span className="gh-stats">
+        <span><strong>{num(daysLeft)}</strong><small><CalendarClock size={11} /> jours restants</small></span>
+        <span><strong>{reached ? '✓' : '+' + eur(perMonth)}</strong><small><TrendingUp size={11} /> en plus / mois</small></span>
+        <span><strong>{reached ? '🎉' : eur(next)}</strong><small><Flag size={11} /> {reached ? 'atteint !' : 'prochain palier'}</small></span>
+      </span>
+    </button>
   );
 }
 
@@ -313,7 +330,7 @@ function OverviewSection() {
       <div className="section-title"><span>Vue d'ensemble</span></div>
       <div className="carousel">
         <button className="card card-click group-card" onClick={() => go('life')}>
-          <div className="row-between"><div className="gh"><span className="ico"><Sprout size={14} /></span>Life</div><ArrowUpRight size={15} className="faint" /></div>
+          <div className="row-between"><div className="gh"><span className="ico"><HeartPulse size={14} /></span>Life</div><ArrowUpRight size={15} className="faint" /></div>
           <div>
             <div className="row-between small"><span className="muted">Habitudes du jour</span><span className="mono">{habitsDone}/{habitsToday.length}</span></div>
             <div style={{ marginTop: 6 }}><Progress value={habitsDone} max={habitsToday.length || 1} /></div>

@@ -1,6 +1,6 @@
 import iconUrl from './assets/icon.svg';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { CalendarCheck, FolderKanban, Plus, Settings as SettingsIcon, Sprout, Wallet as WalletIcon, Cloud, CloudOff, Loader2 } from 'lucide-react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import { CalendarCheck, FolderKanban, HeartPulse, Plus, Settings as SettingsIcon, Wallet as WalletIcon, Cloud, CloudOff, Loader2 } from 'lucide-react';
 import { useAppState } from './store';
 import { useRoute, go, parsePath, tabOf, depthOf, TABS, type TabName } from './router';
 import { startSync, useSyncStatus } from './sync';
@@ -33,7 +33,7 @@ function useTheme() {
 
 const NAV: { name: TabName; label: string; short: string; icon: typeof CalendarCheck }[] = [
   { name: 'home', label: "Aujourd'hui", short: "Aujourd'hui", icon: CalendarCheck },
-  { name: 'life', label: 'Life', short: 'Life', icon: Sprout },
+  { name: 'life', label: 'Life', short: 'Life', icon: HeartPulse },
   { name: 'wallet', label: 'Portefeuille', short: 'Portefeuille', icon: WalletIcon },
   { name: 'projects', label: 'Projets', short: 'Projets', icon: FolderKanban }
 ];
@@ -173,12 +173,15 @@ export default function App() {
         ))}
       </main>
 
+      {/* Barre d'onglets façon iOS : une capsule en verre flottante + le bouton « + » à part */}
       <nav className="tabbar">
-        {NAV.slice(0, 2).map((n) => <TabButton key={n.name} n={n} active={activeTab === n.name} badge={n.name === 'home' ? todayCount : 0} onTap={() => tapTab(n.name)} />)}
+        <div className="tabbar-pill" style={{ '--i': TABS.indexOf(activeTab) } as CSSProperties}>
+          <span className="tab-lens" aria-hidden="true" />
+          {NAV.map((n) => <TabButton key={n.name} n={n} active={activeTab === n.name} badge={n.name === 'home' ? todayCount : 0} onTap={() => tapTab(n.name)} />)}
+        </div>
         <button className="tab-plus" onClick={openQuick} aria-label="Ajout rapide">
           <Plus size={26} strokeWidth={2.4} />
         </button>
-        {NAV.slice(2).map((n) => <TabButton key={n.name} n={n} active={activeTab === n.name} onTap={() => tapTab(n.name)} />)}
       </nav>
 
       <QuickAdd open={quick} onClose={() => setQuick(false)} defaultProject={parsePath(path).name === 'project' ? parsePath(path).param : undefined} defaultDue={activeTab === 'home' ? today() : undefined} />
@@ -191,10 +194,10 @@ function TabButton({ n, active, badge = 0, onTap }: { n: (typeof NAV)[number]; a
   return (
     <button className={'tab' + (active ? ' active' : '')} onClick={onTap} aria-current={active ? 'page' : undefined}>
       <span className="tab-icon">
-        <n.icon size={22} strokeWidth={active ? 2.3 : 1.8} />
+        <n.icon size={23} strokeWidth={active ? 2.2 : 1.8} />
         {badge > 0 && <span className="tab-badge">{badge > 9 ? '9+' : badge}</span>}
       </span>
-      {n.short}
+      <span className="tab-label">{n.short}</span>
     </button>
   );
 }
