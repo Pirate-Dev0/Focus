@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { CheckSquare, Clock, Receipt, Repeat, Scale, Shirt } from 'lucide-react';
+import { CalendarDays, CheckSquare, Clock, Receipt, Repeat, Scale, Shirt, X } from 'lucide-react';
 import { getState, update, useAppState } from '../store';
-import { ChipScroll, Field, NumInput, Segmented, Sheet, toast, PriorityIcon } from './ui';
+import { ChipScroll, NumInput, Segmented, Sheet, toast, PriorityIcon } from './ui';
 import type { Priority, RecurrenceFreq } from '../types';
 import { addDays, fmtDate, haptic, PRIORITY_LABEL, today, uid } from '../utils';
 import { addTaskFromText, projectFromTag } from '../actions';
@@ -110,10 +110,22 @@ export function QuickAdd({ open, onClose, defaultProject, defaultDue }: { open: 
     { v: addDays(today(), 1), l: 'Demain' },
     { v: addDays(today(), 7), l: 'Dans 1 sem.' }
   ];
+  const customDue = Boolean(due) && !dueOpts.some((o) => o.v === due);
+  const REC_OPTS: { f: RecurrenceFreq | 'none'; l: string }[] = [
+    { f: 'none', l: 'Aucune' },
+    { f: 'daily', l: 'Tous les jours' },
+    { f: 'weekdays', l: 'Jours ouvrés' },
+    { f: 'weekly', l: 'Chaque semaine' },
+    { f: 'monthly', l: 'Chaque mois' }
+  ];
+  const margin = vBuy && vTarget ? vTarget - vBuy : 0;
+  const lastKg = s.bodyWeights[s.bodyWeights.length - 1];
+  const canSubmit = kind === 'task' ? Boolean(title.trim()) : kind === 'expense' ? Boolean(name.trim() && amount) : kind === 'vinted' ? Boolean(vName.trim()) : Boolean(kg);
+  const pill = (on: boolean) => 'hs-pill' + (on ? ' solid on' : '');
 
   return (
     <Sheet open={open} onClose={onClose} title="Ajout rapide">
-      <div style={{ marginBottom: 16 }}>
+      <div className="hs qa">
         <Segmented<Kind>
           full
           value={kind}
@@ -125,110 +137,173 @@ export function QuickAdd({ open, onClose, defaultProject, defaultDue }: { open: 
             { value: 'weight', label: <><Scale size={14} /> Poids</> }
           ]}
         />
-      </div>
 
-      <div onKeyDown={onEnter}>
-        {kind === 'task' && (
-          <>
-            <input ref={firstRef} className="input-bare title-input" placeholder="Que faut-il faire ?" value={title} onChange={(e) => setTitle(e.target.value)} style={{ marginBottom: 16 }} enterKeyHint="done" autoCapitalize="sentences" />
-            <Field label="Projet">
-              <ChipScroll>
-                {projects.map((p) => (
-                  <button key={p.id} type="button" className={'chip chip-lg' + ((tagged?.project.id || projectId) === p.id ? ' solid' : '')} onClick={() => setProjectId(p.id)}>{p.name}</button>
-                ))}
-              </ChipScroll>
-            </Field>
-            <Field label="Échéance & Heure">
-              <div className="row" style={{ flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                {dueOpts.map((o) => (
-                  <button key={o.l} type="button" className={'chip chip-lg' + (due === o.v ? ' solid' : '')} onClick={() => setDue(o.v)}>{o.l}</button>
-                ))}
-                <input type="date" className="input" style={{ width: 140, height: 34 }} value={due} onChange={(e) => setDue(e.target.value)} />
-              </div>
-              <div className="row" style={{ gap: 6, alignItems: 'center' }}>
-                <span className="faint small row" style={{ gap: 3 }}><Clock size={12} /> Heure :</span>
-                <input
-                  type="time"
-                  className="input"
-                  style={{ width: 110, height: 32 }}
-                  value={dueTime}
-                  onChange={(e) => setDueTime(e.target.value)}
-                />
-                {dueTime && (
-                  <button type="button" className="btn btn-ghost small" onClick={() => setDueTime('')}>Effacer</button>
+        <div onKeyDown={onEnter}>
+          {kind === 'task' && (
+            <>
+              <input ref={firstRef} className="input-bare title-input qa-title" placeholder="Que faut-il faire ?" value={title} onChange={(e) => setTitle(e.target.value)} enterKeyHint="done" autoCapitalize="sentences" />
+
+              <section className="hs-sec">
+                <div className="hs-label">Projet</div>
+                <ChipScroll>
+                  {projects.map((p) => (
+                    <button key={p.id} type="button" className={pill((tagged?.project.id || projectId) === p.id)} onClick={() => setProjectId(p.id)}>{p.name}</button>
+                  ))}
+                </ChipScroll>
+              </section>
+
+              <section className="hs-sec">
+                <div className="hs-label">Échéance</div>
+                <ChipScroll>
+                  {dueOpts.map((o) => (
+                    <button key={o.l} type="button" className={pill(due === o.v)} onClick={() => setDue(o.v)}>{o.l}</button>
+                  ))}
+                  <PickerPill type="date" value={due} onChange={setDue} on={customDue}>
+                    <CalendarDays size={14} /> {customDue ? fmtDate(due, { withDay: true }) : 'Autre date'}
+                  </PickerPill>
+                </ChipScroll>
+                <div className="hs-card qa-card">
+                  <div className="hs-row">
+                    <span className="hs-row-icon"><Clock size={16} /></span>
+                    <div className="hs-row-text">
+                      <b>Heure</b>
+                      <span>{dueTime ? `À faire à ${dueTime}` : 'Optionnelle'}</span>
+                    </div>
+                    {dueTime && (
+                      <button type="button" className="icon-btn" aria-label="Retirer l’heure" onClick={() => setDueTime('')}><X size={16} /></button>
+                    )}
+                    <PickerPill type="time" value={dueTime} onChange={setDueTime} on={Boolean(dueTime)}>
+                      {dueTime || 'Ajouter'}
+                    </PickerPill>
+                  </div>
+                </div>
+              </section>
+
+              <section className="hs-sec">
+                <div className="hs-label">Répétition</div>
+                <ChipScroll>
+                  {REC_OPTS.map((opt) => (
+                    <button key={opt.f} type="button" className={pill(rec === opt.f)} onClick={() => setRec(opt.f)}>
+                      {opt.f !== 'none' && <Repeat size={13} />} {opt.l}
+                    </button>
+                  ))}
+                </ChipScroll>
+              </section>
+
+              <section className="hs-sec">
+                <div className="hs-label">Priorité</div>
+                <div className="hs-moments five">
+                  {(['p0', 'p1', 'p2', 'p3', 'none'] as Priority[]).map((p) => (
+                    <button key={p} type="button" className={'hs-moment' + (prio === p ? ' on' : '')} onClick={() => setPrio(p)}>
+                      <PriorityIcon p={p} size={17} />
+                      <span>{PRIORITY_LABEL[p]}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            </>
+          )}
+
+          {kind === 'expense' && (
+            <>
+              <input ref={firstRef} className="input-bare title-input qa-title" placeholder="Nom (ex : Vercel Pro)" enterKeyHint="done" value={name} onChange={(e) => setName(e.target.value)} />
+
+              <section className="hs-sec">
+                <div className="hs-label">Montant</div>
+                <div className="qa-unit">
+                  <NumInput value={amount || null} onChange={setAmount} placeholder="0" className="input qa-big" />
+                  <span>€</span>
+                </div>
+              </section>
+
+              <section className="hs-sec">
+                <div className="hs-label">Fréquence</div>
+                <Segmented full value={freq} onChange={setFreq} options={[{ value: 'ponctuel', label: 'Ponctuelle' }, { value: 'mensuel', label: 'Tous les mois' }]} />
+              </section>
+
+              <section className="hs-sec">
+                <div className="hs-label">Catégorie</div>
+                <div className="qa-wrap">
+                  {EXPENSE_CATS.map((c) => (
+                    <button key={c} type="button" className={pill(cat === c)} onClick={() => setCat(c)}>{c}</button>
+                  ))}
+                </div>
+              </section>
+            </>
+          )}
+
+          {kind === 'vinted' && (
+            <>
+              <input ref={firstRef} className="input-bare title-input qa-title" placeholder="Article (ex : Nike TN noires)" enterKeyHint="done" value={vName} onChange={(e) => setVName(e.target.value)} />
+
+              <section className="hs-sec">
+                <div className="qa-grid2">
+                  <label className="hs-mini">
+                    <span>Prix d’achat</span>
+                    <div className="qa-unit">
+                      <NumInput value={vBuy || null} onChange={setVBuy} placeholder="0" className="input" />
+                      <span>€</span>
+                    </div>
+                  </label>
+                  <label className="hs-mini">
+                    <span>Revente visée</span>
+                    <div className="qa-unit">
+                      <NumInput value={vTarget || null} onChange={setVTarget} placeholder="0" className="input" />
+                      <span>€</span>
+                    </div>
+                  </label>
+                </div>
+                {margin !== 0 && (
+                  <div className={'qa-margin' + (margin < 0 ? ' neg' : '')}>
+                    Marge visée : {margin > 0 ? '+' : ''}{margin.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} €
+                  </div>
                 )}
-              </div>
-            </Field>
-            <Field label="Répétition">
-              <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
-                {[
-                  { f: 'none', l: 'Aucune' },
-                  { f: 'daily', l: 'Tous les jours' },
-                  { f: 'weekdays', l: 'Jours ouvrés' },
-                  { f: 'weekly', l: 'Hebdo' },
-                  { f: 'monthly', l: 'Mensuel' }
-                ].map((opt) => (
-                  <button
-                    key={opt.f}
-                    type="button"
-                    className={'chip chip-lg' + (rec === opt.f ? ' solid' : '')}
-                    onClick={() => setRec(opt.f as any)}
-                  >
-                    {opt.f !== 'none' && <Repeat size={11} />} {opt.l}
-                  </button>
-                ))}
-              </div>
-            </Field>
-            <Field label="Priorité">
-              <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
-                {(['p0', 'p1', 'p2', 'p3', 'none'] as Priority[]).map((p) => (
-                  <button key={p} type="button" className={'chip chip-lg' + (prio === p ? ' solid' : '')} onClick={() => setPrio(p)}>
-                    <PriorityIcon p={p} size={12} /> {PRIORITY_LABEL[p]}
-                  </button>
-                ))}
-              </div>
-            </Field>
-          </>
-        )}
+              </section>
 
-        {kind === 'expense' && (
-          <>
-            <input ref={firstRef} className="input-bare title-input" placeholder="Nom (ex : Vercel Pro)" enterKeyHint="done" value={name} onChange={(e) => setName(e.target.value)} style={{ marginBottom: 16 }} />
-            <div className="field-row">
-              <Field label="Montant (€)"><NumInput value={amount || null} onChange={setAmount} placeholder="0" /></Field>
-              <Field label="Catégorie">
-                <select className="input" value={cat} onChange={(e) => setCat(e.target.value)}>
-                  {EXPENSE_CATS.map((c) => <option key={c}>{c}</option>)}
-                </select>
-              </Field>
-            </div>
-            <Segmented full value={freq} onChange={setFreq} options={[{ value: 'ponctuel', label: 'Ponctuelle' }, { value: 'mensuel', label: 'Tous les mois' }]} />
-          </>
-        )}
+              <section className="hs-sec">
+                <div className="hs-label">Catégorie</div>
+                <div className="qa-wrap">
+                  {VINTED_CATS.map((c) => (
+                    <button key={c} type="button" className={pill(vCat === c)} onClick={() => setVCat(c)}>{c}</button>
+                  ))}
+                </div>
+              </section>
+            </>
+          )}
 
-        {kind === 'vinted' && (
-          <>
-            <input ref={firstRef} className="input-bare title-input" placeholder="Article (ex : Nike TN noires)" enterKeyHint="done" value={vName} onChange={(e) => setVName(e.target.value)} style={{ marginBottom: 16 }} />
-            <div className="field-row">
-              <Field label="Prix d'achat (€)"><NumInput value={vBuy || null} onChange={setVBuy} placeholder="0" /></Field>
-              <Field label="Revente visée (€)"><NumInput value={vTarget || null} onChange={setVTarget} placeholder="0" /></Field>
-            </div>
-            <Field label="Catégorie">
-              <select className="input" value={vCat} onChange={(e) => setVCat(e.target.value)}>
-                {VINTED_CATS.map((c) => <option key={c}>{c}</option>)}
-              </select>
-            </Field>
-          </>
-        )}
+          {kind === 'weight' && (
+            <section className="hs-sec qa-weight">
+              <div className="hs-label">Poids du jour</div>
+              <div className="qa-unit">
+                <NumInput autoFocus value={kg || null} onChange={setKg} placeholder="70,5" className="input qa-big" />
+                <span>kg</span>
+              </div>
+              {lastKg && (
+                <div className="hs-hint">Dernière pesée : {lastKg.kg.toLocaleString('fr-FR')} kg · {fmtDate(lastKg.date).toLowerCase()}</div>
+              )}
+            </section>
+          )}
+        </div>
 
-        {kind === 'weight' && (
-          <Field label="Poids du jour (kg)">
-            <NumInput autoFocus value={kg || null} onChange={setKg} placeholder="70,5" className="input title-input" />
-          </Field>
-        )}
+        <button className="btn btn-primary btn-lg btn-block qa-submit" disabled={!canSubmit} onClick={submit}>Ajouter</button>
       </div>
-
-      <button className="btn btn-primary btn-lg btn-block" style={{ marginTop: 18 }} onClick={submit}>Ajouter</button>
     </Sheet>
+  );
+}
+
+/* Pastille qui ouvre le sélecteur natif (date / heure) : l'input est invisible par-dessus */
+function PickerPill({ type, value, onChange, on, children }: { type: 'date' | 'time'; value: string; onChange: (v: string) => void; on: boolean; children: React.ReactNode }) {
+  return (
+    <label className={'hs-pill hs-picker' + (on ? ' solid on' : '')}>
+      {children}
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onClick={(e) => {
+          try { (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.(); } catch { /* le tap natif suffit */ }
+        }}
+      />
+    </label>
   );
 }
