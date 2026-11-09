@@ -1,6 +1,5 @@
 import { useState, useId } from 'react';
 import {
-  Terminal,
   Bot,
   Sparkles,
   Brain,
@@ -20,7 +19,6 @@ import {
   Sliders,
   DollarSign,
   Cpu,
-  Coins,
   Pencil
 } from 'lucide-react';
 import { useAppState, update } from '../store';
@@ -67,6 +65,7 @@ export default function Dev() {
   const actions = dev?.actions || [];
   const pendingActions = actions.filter((a) => a.status === 'pending');
   const completedActions = actions.filter((a) => a.status === 'completed');
+  const devOn = Boolean(dev?.devModeActive);
 
   // Métriques globales
   const totalTokens = services.filter((s) => s.unit === 'tokens').reduce((acc, s) => acc + s.used, 0);
@@ -195,75 +194,57 @@ export default function Dev() {
   return (
     <div className="dev-view">
       {/* En-tête de la page */}
-      <div className="page-head dev-head">
+      <div className="page-head">
         <div>
-          <h1 className="page-title row" style={{ gap: 10 }}>
-            <Terminal size={26} /> Dev & Gestion IA
-          </h1>
-          <p className="page-sub">Suivi des tokens d'IA et pont d'assistance manuelle pour agents autonomes.</p>
+          <h1 className="page-title">Dev</h1>
+          <div className="page-sub">Tes IA, leurs tokens et ce qu'elles attendent de toi.</div>
         </div>
+      </div>
 
-        {/* Master Toggle : Mode Dev / Agent */}
-        <div className="dev-toggle-box">
-          <div className="dev-toggle-info">
-            <span className="dev-toggle-label">Mode Dev / Agent</span>
-            <span className={'dev-toggle-status' + (dev?.devModeActive ? ' active' : '')}>
-              {dev?.devModeActive ? 'Actif' : 'Inactif'}
+      {/* Carte de contrôle : Mode Agent + état du pont local */}
+      <section className={'dev-hero' + (devOn ? ' on' : '')}>
+        <div className="dev-hero-top">
+          <span className="dev-hero-icon"><Bot size={21} strokeWidth={2.2} /></span>
+          <span className="dev-hero-text">
+            <span className="dev-hero-title">Mode Agent</span>
+            <span className="dev-hero-status">
+              <i className="dev-live-dot" />
+              {devOn ? 'Actif · à l’écoute de tes IA' : 'En pause · aucune alerte'}
             </span>
-          </div>
+          </span>
           <button
             type="button"
-            className={'dev-switch' + (dev?.devModeActive ? ' on' : '')}
+            role="switch"
+            aria-checked={devOn}
+            aria-label="Mode Agent"
+            className={'dev-switch' + (devOn ? ' on' : '')}
             onClick={() => {
               toggleDevMode();
               haptic();
             }}
-            aria-label="Basculer le Mode Dev / Agent"
-            title="Activer/Désactiver la réception des actions des agents IA"
           >
             <span className="dev-switch-knob" />
           </button>
         </div>
-      </div>
-
-      {/* Barre d'état du pont local HTTP */}
-      <div className="dev-bridge-bar row-between">
-        <div className="row" style={{ gap: 8 }}>
-          <span className={'status-dot' + (bridgeOnline ? ' online' : ' offline')} />
-          <span className="small">
-            {bridgeOnline ? (
-              <>
-                Pont local <b>Connecté</b> sur <code className="dev-code">http://localhost:3001</code>
-              </>
-            ) : isLocalHost() ? (
-              <>
-                Pont local <b>Inactif</b> (Lancez <code className="dev-code">npm run bridge</code> dans le terminal pour la liaison directe)
-              </>
-            ) : (
-              <>
-                Pont local <b>disponible seulement sur le Mac</b> (ouvre Focus en local avec <code className="dev-code">npm run dev</code>)
-              </>
-            )}
+        <div className="dev-hero-foot">
+          <span className="dev-bridge-chip">
+            <i className={'status-dot' + (bridgeOnline ? ' online' : ' offline')} />
+            {bridgeOnline ? 'Pont connecté' : isLocalHost() ? 'Pont arrêté' : 'Pont : Mac uniquement'}
           </span>
+          <button type="button" className="dev-link-chip" onClick={() => setShowBridgeDocs(!showBridgeDocs)} aria-expanded={showBridgeDocs}>
+            <Code2 size={13} /> {showBridgeDocs ? 'Masquer' : 'Connecter une IA'}
+          </button>
         </div>
-
-        <button
-          type="button"
-          className="link-btn small"
-          onClick={() => setShowBridgeDocs(!showBridgeDocs)}
-          style={{ padding: '2px 0' }}
-        >
-          <Code2 size={13} /> {showBridgeDocs ? 'Masquer la documentation API' : 'Comment connecter une IA ?'}
-        </button>
-      </div>
+      </section>
 
       {/* Accordéon Documentation API / Webhook */}
       {showBridgeDocs && (
         <div className="card card-pad dev-docs-card">
           <div className="row-between" style={{ marginBottom: 8 }}>
-            <b>Comment envoyer une action manuelle depuis vos scripts ou agents IA</b>
+            <b className="dev-docs-title">Connecter une IA</b>
             <button
-              className="btn btn-ghost small"
+              type="button"
+              className="dev-ghost-chip"
               onClick={() =>
                 copyToClipboard(
                   `curl -X POST http://localhost:3001/api/agent/action \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "agentName": "Google Antigravity",\n    "title": "Validation 2FA requise",\n    "reason": "Authentification nécessaire pour publier le build",\n    "steps": [\n      "Ouvrir la session GitHub",\n      "Approuver la notification sur votre téléphone",\n      "Exécuter l autorisation dans le terminal"\n    ]\n  }'`,
@@ -271,11 +252,11 @@ export default function Dev() {
                 )
               }
             >
-              <Copy size={13} /> Copier cURL
+              <Copy size={13} /> Copier
             </button>
           </div>
-          <p className="small muted" style={{ margin: '0 0 10px' }}>
-            N'importe quelle IA (Antigravity, Claude, script local, cron) peut faire un appel <code>POST</code> sur votre machine pour vous soumettre une mission pas-à-pas avec des cases à cocher :
+          <p className="small muted" style={{ margin: '0 0 10px', lineHeight: 1.5 }}>
+            Sur le Mac, lance <code className="dev-code">npm run bridge</code>. Ensuite n'importe quelle IA (Antigravity, Claude, un script…) peut t'envoyer une mission pas à pas avec un simple <code className="dev-code">POST</code> :
           </p>
           <pre className="dev-pre">
 {`curl -X POST http://localhost:3001/api/agent/action \\
@@ -292,73 +273,51 @@ export default function Dev() {
   }'`}
           </pre>
           <div className="small faint" style={{ marginTop: 8 }}>
-            💡 Vous pouvez aussi ajouter <code>?wait=true</code> à l'URL pour que la requête cURL attende que vous ayez cliqué sur le bouton de validation dans Focus !
+            💡 Ajoute <code className="dev-code">?wait=true</code> à l'URL : l'IA attend alors que tu valides l'action dans Focus.
           </div>
         </div>
       )}
 
+
       {/* ========================================================
           SECTION 2 : MODE DEV / AGENT (HUMAN-IN-THE-LOOP)
          ======================================================== */}
-      <div className="section-title">
-        <span className="row" style={{ gap: 6 }}>
-          <Bot size={15} /> Mode Dev / Agent — Actions Requises
+      <div className="dev-section-head">
+        <span className="dev-section-title">
+          Actions requises
           {pendingActions.length > 0 && <span className="dev-badge-count">{pendingActions.length}</span>}
         </span>
-        <div className="row" style={{ gap: 6 }}>
-          <button
-            type="button"
-            className="btn btn-ghost small"
-            onClick={() => createTestAgentAction('2fa')}
-            title="Créer une action de test pour essayer l'interface"
-          >
-            <Zap size={13} /> Simuler action IA
+        {devOn && (
+          <button type="button" className="dev-ghost-chip" onClick={() => createTestAgentAction('2fa')} title="Créer une action de test pour essayer l'interface">
+            <Zap size={12} /> Simuler
           </button>
-        </div>
+        )}
       </div>
 
-      {!dev?.devModeActive ? (
-        <div className="card card-pad dev-disabled-box">
-          <div className="row" style={{ gap: 12 }}>
-            <div className="dev-disabled-icon">
-              <Bot size={24} />
-            </div>
-            <div>
-              <b style={{ display: 'block', marginBottom: 2 }}>Le Mode Dev / Agent est actuellement désactivé</b>
-              <span className="muted small">
-                Activez l'interrupteur « Mode Dev / Agent » en haut à droite pour recevoir les alertes et les instructions pas-à-pas lorsque vos IA ont besoin d'une intervention manuelle.
-              </span>
-            </div>
-          </div>
+      {!devOn ? (
+        <div className="dev-empty">
+          <span className="dev-empty-icon"><Bot size={24} /></span>
+          <b className="dev-empty-title">Mode Agent en pause</b>
+          <p className="dev-empty-text">Active-le pour recevoir, étape par étape, ce que tes IA ne peuvent pas faire seules.</p>
+          <button
+            type="button"
+            className="dev-cta-on"
+            onClick={() => {
+              toggleDevMode(true);
+              haptic();
+            }}
+          >
+            <Zap size={15} /> Activer le mode Agent
+          </button>
         </div>
       ) : pendingActions.length === 0 ? (
-        <div className="card card-pad dev-standby-box">
-          <div className="row" style={{ gap: 14 }}>
-            <div className="dev-standby-icon">
-              <CheckCheck size={24} />
-            </div>
-            <div className="grow">
-              <b>Tous les agents sont autonomes — Aucune action manuelle requise</b>
-              <p className="muted small" style={{ margin: '4px 0 0' }}>
-                Dès qu'une IA bloque sur une tâche (2FA, captcha, achat, terminal, validation physique), elle vous transmettra ici ses instructions étape par étape.
-              </p>
-            </div>
-            <div className="row" style={{ gap: 6 }}>
-              <button
-                type="button"
-                className="btn small"
-                onClick={() => createTestAgentAction('deploy')}
-              >
-                Tester un cas DNS
-              </button>
-              <button
-                type="button"
-                className="btn small"
-                onClick={() => createTestAgentAction('payment')}
-              >
-                Tester un paiement
-              </button>
-            </div>
+        <div className="dev-empty ok">
+          <span className="dev-empty-icon"><CheckCheck size={24} /></span>
+          <b className="dev-empty-title">Rien à faire pour l'instant</b>
+          <p className="dev-empty-text">Quand une IA bloque (2FA, paiement, DNS…), ses étapes arrivent ici avec des cases à cocher.</p>
+          <div className="dev-empty-actions">
+            <button type="button" className="dev-ghost-chip" onClick={() => createTestAgentAction('deploy')}>Tester un cas DNS</button>
+            <button type="button" className="dev-ghost-chip" onClick={() => createTestAgentAction('payment')}>Tester un paiement</button>
           </div>
         </div>
       ) : (
@@ -530,14 +489,12 @@ export default function Dev() {
       {/* ========================================================
           SECTION 1 : COURS D'UTILISATION DES TOKENS & QUOTAS IA
          ======================================================== */}
-      <div className="section-title" style={{ marginTop: 36 }}>
-        <span className="row" style={{ gap: 6 }}>
-          <Coins size={15} /> Utilisation des Tokens & Quotas IA
-          <span className="count">({services.length} apps)</span>
+      <div className="dev-section-head" style={{ marginTop: 34 }}>
+        <span className="dev-section-title">
+          Tokens & quotas <span className="count">{services.length} apps</span>
         </span>
-
-        <button type="button" className="btn btn-primary small" onClick={() => openNewService()}>
-          <Plus size={14} /> Ajouter une application
+        <button type="button" className="dev-ghost-chip primary" onClick={() => openNewService()}>
+          <Plus size={13} /> Ajouter
         </button>
       </div>
 
