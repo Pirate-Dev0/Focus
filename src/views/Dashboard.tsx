@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { ArrowRight, ArrowUpRight, CalendarClock, ChevronDown, ChevronUp, Dumbbell, Eye, EyeOff, Flag, Flame, FolderKanban, HeartPulse, Plus, Settings, SlidersHorizontal, Target, TrendingUp, Wallet } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, CalendarClock, ChevronDown, ChevronUp, Dumbbell, Eye, EyeOff, Flag, Flame, FolderKanban, Plus, Settings, SlidersHorizontal, Target, TrendingUp, Wallet, Zap } from 'lucide-react';
 import { update, useAppState } from '../store';
 import { go } from '../router';
 import { Field, NumInput, Progress, Sheet, Sparkline } from '../components/ui';
@@ -330,7 +330,7 @@ function OverviewSection() {
       <div className="section-title"><span>Vue d'ensemble</span></div>
       <div className="carousel">
         <button className="card card-click group-card" onClick={() => go('life')}>
-          <div className="row-between"><div className="gh"><span className="ico"><HeartPulse size={14} /></span>Life</div><ArrowUpRight size={15} className="faint" /></div>
+          <div className="row-between"><div className="gh"><span className="ico"><Zap size={14} /></span>Life</div><ArrowUpRight size={15} className="faint" /></div>
           <div>
             <div className="row-between small"><span className="muted">Habitudes du jour</span><span className="mono">{habitsDone}/{habitsToday.length}</span></div>
             <div style={{ marginTop: 6 }}><Progress value={habitsDone} max={habitsToday.length || 1} /></div>

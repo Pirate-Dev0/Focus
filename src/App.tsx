@@ -1,6 +1,6 @@
 import iconUrl from './assets/icon.svg';
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
-import { CalendarCheck, FolderKanban, HeartPulse, Plus, Settings as SettingsIcon, Wallet as WalletIcon, Cloud, CloudOff, Loader2 } from 'lucide-react';
+import { CalendarCheck, FolderKanban, Plus, Settings as SettingsIcon, Wallet as WalletIcon, Zap, Cloud, CloudOff, Loader2 } from 'lucide-react';
 import { useAppState } from './store';
 import { useRoute, go, parsePath, tabOf, depthOf, TABS, type TabName } from './router';
 import { startSync, useSyncStatus } from './sync';
@@ -33,7 +33,7 @@ function useTheme() {
 
 const NAV: { name: TabName; label: string; icon: typeof CalendarCheck }[] = [
   { name: 'home', label: "Aujourd'hui", icon: CalendarCheck },
-  { name: 'life', label: 'Life', icon: HeartPulse },
+  { name: 'life', label: 'Life', icon: Zap },
   { name: 'wallet', label: 'Portefeuille', icon: WalletIcon },
   { name: 'projects', label: 'Projets', icon: FolderKanban }
 ];
