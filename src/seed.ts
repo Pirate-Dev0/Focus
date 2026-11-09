@@ -90,6 +90,17 @@ export function seed(): State {
     expenses: [],
     vinted: [],
     mrrHistory: [],
-    pushSubs: []
+    pushSubs: [],
+    dev: {
+      devModeActive: true,
+      bridgePort: 3001,
+      // Services suivis : compteurs à zéro, tu renseignes tes vrais chiffres dans la page Dev
+      services: [
+        { id: uid(), name: 'Claude (Anthropic)', category: 'llm', icon: 'brain', color: '#d97706', plan: '', used: 0, unit: 'tokens', updatedAt: now },
+        { id: uid(), name: 'Google Antigravity', category: 'code', icon: 'sparkles', color: '#3b82f6', plan: '', used: 0, unit: 'tokens', updatedAt: now },
+        { id: uid(), name: 'ElevenLabs', category: 'voice', icon: 'mic', color: '#8b5cf6', plan: '', used: 0, unit: 'chars', updatedAt: now }
+      ],
+      actions: []
+    }
   };
 }

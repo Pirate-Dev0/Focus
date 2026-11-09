@@ -1,9 +1,10 @@
 import iconUrl from './assets/icon.svg';
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
-import { CalendarCheck, FolderKanban, Plus, Settings as SettingsIcon, Wallet as WalletIcon, Zap, Cloud, CloudOff, Loader2 } from 'lucide-react';
+import { CalendarCheck, FolderKanban, Plus, Settings as SettingsIcon, Wallet as WalletIcon, Zap, Cloud, CloudOff, Loader2, Terminal } from 'lucide-react';
 import { useAppState } from './store';
 import { useRoute, go, parsePath, tabOf, depthOf, TABS, type TabName } from './router';
 import { startSync, useSyncStatus } from './sync';
+import { startBridgeListener } from './devBridge';
 import { primeKeyboard, Toaster } from './components/ui';
 import { QuickAdd } from './components/QuickAdd';
 import { openTasksFor, today } from './utils';
@@ -13,6 +14,7 @@ import Wallet from './views/Wallet';
 import Projects from './views/Projects';
 import Board from './views/Board';
 import Settings from './views/Settings';
+import Dev from './views/Dev';
 
 if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 
@@ -35,7 +37,8 @@ const NAV: { name: TabName; label: string; icon: typeof CalendarCheck }[] = [
   { name: 'home', label: "Aujourd'hui", icon: CalendarCheck },
   { name: 'life', label: 'Life', icon: Zap },
   { name: 'wallet', label: 'Portefeuille', icon: WalletIcon },
-  { name: 'projects', label: 'Projets', icon: FolderKanban }
+  { name: 'projects', label: 'Projets', icon: FolderKanban },
+  { name: 'dev', label: 'Dev', icon: Terminal }
 ];
 
 export function SyncBadge({ compact }: { compact?: boolean }) {
@@ -60,6 +63,7 @@ function Page({ path }: { path: string }) {
     case 'projects': return <Projects />;
     case 'project': return <Board id={r.param!} />;
     case 'settings': return <Settings />;
+    case 'dev': return <Dev />;
     default: return <Dashboard />;
   }
 }
@@ -72,7 +76,7 @@ export default function App() {
   const [quick, setQuick] = useState(false);
 
   // Chaque onglet reste monté et garde sa dernière page : on revient exactement où on était.
-  const [paths, setPaths] = useState<Record<TabName, string>>(() => ({ home: 'home', life: 'life', wallet: 'wallet', projects: 'projects', [activeTab]: path }));
+  const [paths, setPaths] = useState<Record<TabName, string>>(() => ({ home: 'home', life: 'life', wallet: 'wallet', projects: 'projects', dev: 'dev', [activeTab]: path }));
   const [visited, setVisited] = useState<TabName[]>([activeTab]);
   const tabPaths = { ...paths, [activeTab]: path };
   if (paths[activeTab] !== path) setPaths(tabPaths);
@@ -105,6 +109,8 @@ export default function App() {
 
   useEffect(() => {
     startSync();
+    const stopBridge = startBridgeListener();
+    return () => stopBridge();
   }, []);
 
   const tapTab = (t: TabName) => {
@@ -118,7 +124,7 @@ export default function App() {
     setQuick(true);
   };
 
-  // Raccourcis clavier sur ordi
+  // Raccourcis clavier sur ordi (1: Accueil, 2: Life, 3: Portefeuille, 4: Projets, 5: Dev)
   const tapRef = useRef(tapTab);
   tapRef.current = tapTab;
   useEffect(() => {
@@ -129,14 +135,16 @@ export default function App() {
         e.preventDefault();
         setQuick(true);
       }
-      const i = ['1', '2', '3', '4'].indexOf(e.key);
-      if (i >= 0 && !e.metaKey && !e.ctrlKey) tapRef.current(TABS[i]);
+      const i = ['1', '2', '3', '4', '5'].indexOf(e.key);
+      if (i >= 0 && !e.metaKey && !e.ctrlKey && TABS[i]) tapRef.current(TABS[i]);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   const todayCount = openTasksFor(s.tasks, today()).length;
+  const pendingAgentCount = s.dev?.devModeActive ? (s.dev.actions || []).filter((a) => a.status === 'pending').length : 0;
+  const firstPending = s.dev?.actions?.find((a) => a.status === 'pending');
   const navActive = parsePath(path).name === 'settings' ? 'settings' : activeTab;
 
   return (
@@ -153,6 +161,11 @@ export default function App() {
           <button key={n.name} className={'nav-item' + (navActive === n.name ? ' active' : '')} onClick={() => tapTab(n.name)}>
             <n.icon size={16} /> {n.label}
             {n.name === 'home' && todayCount > 0 && <span className="nav-count">{todayCount}</span>}
+            {n.name === 'dev' && pendingAgentCount > 0 && (
+              <span className="nav-count danger-text" style={{ fontWeight: 700 }}>
+                {pendingAgentCount}
+              </span>
+            )}
             <kbd>{i + 1}</kbd>
           </button>
         ))}
@@ -164,6 +177,17 @@ export default function App() {
       </aside>
 
       <main className="main">
+        {/* Bannière globale d'alerte intervention manuelle pour l'IA (si Mode Dev actif) */}
+        {s.dev?.devModeActive && pendingAgentCount > 0 && activeTab !== 'dev' && (
+          <div className="dev-global-banner" onClick={() => go('dev')} role="button" tabIndex={0}>
+            <span className="dev-pulse-dot" />
+            <span className="dev-global-banner-text">
+              <b>Intervention requise par l'IA ({firstPending?.agentName || 'Agent'})</b> : {firstPending?.title || 'Action manuelle à effectuer'}
+            </span>
+            <span className="dev-global-banner-cta">Étape par étape →</span>
+          </div>
+        )}
+
         {TABS.filter((t) => visited.includes(t)).map((t) => (
           <div key={t} className="container" hidden={t !== activeTab}>
             <div key={tabPaths[t]} className={'page' + (t === activeTab && anim.current[tabPaths[t]] ? ' page-' + anim.current[tabPaths[t]] : '')}>
@@ -175,9 +199,17 @@ export default function App() {
 
       {/* Barre d'onglets façon iOS : une capsule en verre flottante + le bouton « + » à part */}
       <nav className="tabbar">
-        <div className="tabbar-pill" style={{ '--i': TABS.indexOf(activeTab) } as CSSProperties}>
+        <div className="tabbar-pill" style={{ '--i': TABS.indexOf(activeTab), '--tabs-count': TABS.length } as CSSProperties}>
           <span className="tab-lens" aria-hidden="true" />
-          {NAV.map((n) => <TabButton key={n.name} n={n} active={activeTab === n.name} badge={n.name === 'home' ? todayCount : 0} onTap={() => tapTab(n.name)} />)}
+          {NAV.map((n) => (
+            <TabButton
+              key={n.name}
+              n={n}
+              active={activeTab === n.name}
+              badge={n.name === 'home' ? todayCount : n.name === 'dev' ? pendingAgentCount : 0}
+              onTap={() => tapTab(n.name)}
+            />
+          ))}
         </div>
         <button className="tab-plus" onClick={openQuick} aria-label="Ajout rapide">
           <Plus size={26} strokeWidth={2.4} />

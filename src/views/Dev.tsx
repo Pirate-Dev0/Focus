@@ -1,0 +1,864 @@
+import { useState, useId } from 'react';
+import {
+  Terminal,
+  Bot,
+  Sparkles,
+  Brain,
+  Mic,
+  Code2,
+  AlertTriangle,
+  Send,
+  Plus,
+  Trash2,
+  Copy,
+  ChevronDown,
+  ChevronUp,
+  RefreshCw,
+  Check,
+  CheckCheck,
+  Zap,
+  Sliders,
+  DollarSign,
+  Cpu,
+  Coins,
+  Pencil
+} from 'lucide-react';
+import { useAppState, update } from '../store';
+import { useBridgeStatus, toggleAgentStep, completeAgentAction, toggleDevMode, createTestAgentAction, isLocalHost } from '../devBridge';
+import type { AgentAction, AiService, AiServiceUnit } from '../types';
+import { uid, haptic, fmtInt } from '../utils';
+import { Sheet, Field, NumInput, toast } from '../components/ui';
+
+const PRESET_APPS: { name: string; category: AiService['category']; unit: AiServiceUnit; icon: string; color: string; plan: string; defaultLimit: number }[] = [
+  { name: 'Claude (Anthropic)', category: 'llm', unit: 'tokens', icon: 'brain', color: '#d97706', plan: 'Pro / Tier 2', defaultLimit: 1000000 },
+  { name: 'Google Antigravity', category: 'code', unit: 'tokens', icon: 'sparkles', color: '#3b82f6', plan: 'Workspace Agentic', defaultLimit: 2000000 },
+  { name: 'ElevenLabs', category: 'voice', unit: 'chars', icon: 'mic', color: '#8b5cf6', plan: 'Creator Plan', defaultLimit: 100000 },
+  { name: 'OpenAI (ChatGPT / API)', category: 'llm', unit: 'tokens', icon: 'bot', color: '#10a37f', plan: 'Pay-as-you-go', defaultLimit: 2500000 },
+  { name: 'Cursor AI', category: 'code', unit: 'tokens', icon: 'code', color: '#06b6d4', plan: 'Pro', defaultLimit: 500000 },
+  { name: 'Perplexity AI', category: 'llm', unit: 'tokens', icon: 'zap', color: '#2563eb', plan: 'Pro Plan', defaultLimit: 600000 },
+  { name: 'Groq (Llama / Mixtral)', category: 'llm', unit: 'tokens', icon: 'cpu', color: '#f97316', plan: 'Developer Tier', defaultLimit: 5000000 },
+  { name: 'Mistral AI', category: 'llm', unit: 'tokens', icon: 'brain', color: '#ec4899', plan: 'Le Plateforme', defaultLimit: 1000000 }
+];
+
+export default function Dev() {
+  const state = useAppState();
+  const dev = state.dev;
+  const bridgeOnline = useBridgeStatus();
+
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [editingService, setEditingService] = useState<AiService | null>(null);
+  const [showCompleted, setShowCompleted] = useState(false);
+  const [showBridgeDocs, setShowBridgeDocs] = useState(false);
+
+  // Formulaire d'ajout / modification de service
+  const [formName, setFormName] = useState('');
+  const [formCategory, setFormCategory] = useState<AiService['category']>('llm');
+  const [formPlan, setFormPlan] = useState('');
+  const [formUsed, setFormUsed] = useState(0);
+  const [formLimit, setFormLimit] = useState<number | undefined>(undefined);
+  const [formUnit, setFormUnit] = useState<AiServiceUnit>('tokens');
+  const [formCost, setFormCost] = useState<number | undefined>(undefined);
+  const [formBudget, setFormBudget] = useState<number | undefined>(undefined);
+  const [formReset, setFormReset] = useState('');
+  const [formColor, setFormColor] = useState('#3b82f6');
+  const [formNotes, setFormNotes] = useState('');
+
+  const services = dev?.services || [];
+  const actions = dev?.actions || [];
+  const pendingActions = actions.filter((a) => a.status === 'pending');
+  const completedActions = actions.filter((a) => a.status === 'completed');
+
+  // Métriques globales
+  const totalTokens = services.filter((s) => s.unit === 'tokens').reduce((acc, s) => acc + s.used, 0);
+  const totalSpend = services.reduce((acc, s) => acc + (s.costUsd || 0), 0);
+  const totalBudget = services.reduce((acc, s) => acc + (s.budgetUsd || 0), 0);
+
+  const openNewService = (preset?: (typeof PRESET_APPS)[number]) => {
+    setEditingService(null);
+    if (preset) {
+      setFormName(preset.name);
+      setFormCategory(preset.category);
+      setFormUnit(preset.unit);
+      setFormPlan(preset.plan);
+      setFormLimit(preset.defaultLimit);
+      setFormColor(preset.color);
+    } else {
+      setFormName('');
+      setFormCategory('llm');
+      setFormUnit('tokens');
+      setFormPlan('Pro');
+      setFormLimit(1000000);
+      setFormColor('#3b82f6');
+    }
+    setFormUsed(0);
+    setFormCost(0);
+    setFormBudget(30);
+    setFormReset(new Date(Date.now() + 25 * 86400000).toISOString().slice(0, 10));
+    setFormNotes('');
+    setSheetOpen(true);
+  };
+
+  const openEditService = (s: AiService) => {
+    setEditingService(s);
+    setFormName(s.name);
+    setFormCategory(s.category || 'llm');
+    setFormUnit(s.unit);
+    setFormPlan(s.plan);
+    setFormUsed(s.used);
+    setFormLimit(s.limit);
+    setFormCost(s.costUsd);
+    setFormBudget(s.budgetUsd);
+    setFormReset(s.resetDate || '');
+    setFormColor(s.color || '#3b82f6');
+    setFormNotes(s.notes || '');
+    setSheetOpen(true);
+  };
+
+  const saveService = () => {
+    if (!formName.trim()) {
+      toast('Veuillez entrer un nom pour l’application');
+      return;
+    }
+
+    const now = Date.now();
+    if (editingService) {
+      update((d) => {
+        const item = d.dev.services.find((x) => x.id === editingService.id);
+        if (item) {
+          item.name = formName.trim();
+          item.category = formCategory;
+          item.unit = formUnit;
+          item.plan = formPlan.trim();
+          item.used = formUsed;
+          item.limit = formLimit;
+          item.costUsd = formCost;
+          item.budgetUsd = formBudget;
+          item.resetDate = formReset;
+          item.color = formColor;
+          item.notes = formNotes.trim();
+          item.updatedAt = now;
+        }
+      });
+      toast(`Application « ${formName} » mise à jour`);
+    } else {
+      const newService: AiService = {
+        id: uid(),
+        name: formName.trim(),
+        category: formCategory,
+        unit: formUnit,
+        plan: formPlan.trim() || 'Standard',
+        used: formUsed,
+        limit: formLimit,
+        costUsd: formCost,
+        budgetUsd: formBudget,
+        resetDate: formReset,
+        color: formColor,
+        notes: formNotes.trim(),
+        updatedAt: now
+      };
+      update((d) => {
+        d.dev.services.push(newService);
+      });
+      toast(`Application « ${formName} » ajoutée`);
+    }
+    setSheetOpen(false);
+  };
+
+  const deleteService = (id: string, name: string) => {
+    if (confirm(`Supprimer l'application « ${name} » du suivi ?`)) {
+      update((d) => {
+        d.dev.services = d.dev.services.filter((x) => x.id !== id);
+      });
+      toast(`Application « ${name} » supprimée`);
+      setSheetOpen(false);
+    }
+  };
+
+  const quickIncrement = (serviceId: string, delta: number) => {
+    update((d) => {
+      const s = d.dev.services.find((x) => x.id === serviceId);
+      if (s) {
+        s.used = Math.max(0, s.used + delta);
+        s.updatedAt = Date.now();
+      }
+    });
+    haptic();
+    toast(`+${fmtInt(delta)} enregistrés`);
+  };
+
+  const copyToClipboard = (text: string, msg: string) => {
+    navigator.clipboard.writeText(text);
+    toast(msg);
+    haptic();
+  };
+
+  return (
+    <div className="dev-view">
+      {/* En-tête de la page */}
+      <div className="page-head dev-head">
+        <div>
+          <h1 className="page-title row" style={{ gap: 10 }}>
+            <Terminal size={26} /> Dev & Gestion IA
+          </h1>
+          <p className="page-sub">Suivi des tokens d'IA et pont d'assistance manuelle pour agents autonomes.</p>
+        </div>
+
+        {/* Master Toggle : Mode Dev / Agent */}
+        <div className="dev-toggle-box">
+          <div className="dev-toggle-info">
+            <span className="dev-toggle-label">Mode Dev / Agent</span>
+            <span className={'dev-toggle-status' + (dev?.devModeActive ? ' active' : '')}>
+              {dev?.devModeActive ? 'Actif' : 'Inactif'}
+            </span>
+          </div>
+          <button
+            type="button"
+            className={'dev-switch' + (dev?.devModeActive ? ' on' : '')}
+            onClick={() => {
+              toggleDevMode();
+              haptic();
+            }}
+            aria-label="Basculer le Mode Dev / Agent"
+            title="Activer/Désactiver la réception des actions des agents IA"
+          >
+            <span className="dev-switch-knob" />
+          </button>
+        </div>
+      </div>
+
+      {/* Barre d'état du pont local HTTP */}
+      <div className="dev-bridge-bar row-between">
+        <div className="row" style={{ gap: 8 }}>
+          <span className={'status-dot' + (bridgeOnline ? ' online' : ' offline')} />
+          <span className="small">
+            {bridgeOnline ? (
+              <>
+                Pont local <b>Connecté</b> sur <code className="dev-code">http://localhost:3001</code>
+              </>
+            ) : isLocalHost() ? (
+              <>
+                Pont local <b>Inactif</b> (Lancez <code className="dev-code">npm run bridge</code> dans le terminal pour la liaison directe)
+              </>
+            ) : (
+              <>
+                Pont local <b>disponible seulement sur le Mac</b> (ouvre Focus en local avec <code className="dev-code">npm run dev</code>)
+              </>
+            )}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          className="link-btn small"
+          onClick={() => setShowBridgeDocs(!showBridgeDocs)}
+          style={{ padding: '2px 0' }}
+        >
+          <Code2 size={13} /> {showBridgeDocs ? 'Masquer la documentation API' : 'Comment connecter une IA ?'}
+        </button>
+      </div>
+
+      {/* Accordéon Documentation API / Webhook */}
+      {showBridgeDocs && (
+        <div className="card card-pad dev-docs-card">
+          <div className="row-between" style={{ marginBottom: 8 }}>
+            <b>Comment envoyer une action manuelle depuis vos scripts ou agents IA</b>
+            <button
+              className="btn btn-ghost small"
+              onClick={() =>
+                copyToClipboard(
+                  `curl -X POST http://localhost:3001/api/agent/action \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "agentName": "Google Antigravity",\n    "title": "Validation 2FA requise",\n    "reason": "Authentification nécessaire pour publier le build",\n    "steps": [\n      "Ouvrir la session GitHub",\n      "Approuver la notification sur votre téléphone",\n      "Exécuter l autorisation dans le terminal"\n    ]\n  }'`,
+                  'Exemple cURL copié !'
+                )
+              }
+            >
+              <Copy size={13} /> Copier cURL
+            </button>
+          </div>
+          <p className="small muted" style={{ margin: '0 0 10px' }}>
+            N'importe quelle IA (Antigravity, Claude, script local, cron) peut faire un appel <code>POST</code> sur votre machine pour vous soumettre une mission pas-à-pas avec des cases à cocher :
+          </p>
+          <pre className="dev-pre">
+{`curl -X POST http://localhost:3001/api/agent/action \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "agentName": "Google Antigravity",
+    "title": "Validation 2FA requise",
+    "reason": "Authentification nécessaire pour publier le build",
+    "steps": [
+      "Ouvrir la session GitHub",
+      "Approuver la notification sur votre téléphone",
+      "Exécuter l autorisation dans le terminal"
+    ]
+  }'`}
+          </pre>
+          <div className="small faint" style={{ marginTop: 8 }}>
+            💡 Vous pouvez aussi ajouter <code>?wait=true</code> à l'URL pour que la requête cURL attende que vous ayez cliqué sur le bouton de validation dans Focus !
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          SECTION 2 : MODE DEV / AGENT (HUMAN-IN-THE-LOOP)
+         ======================================================== */}
+      <div className="section-title">
+        <span className="row" style={{ gap: 6 }}>
+          <Bot size={15} /> Mode Dev / Agent — Actions Requises
+          {pendingActions.length > 0 && <span className="dev-badge-count">{pendingActions.length}</span>}
+        </span>
+        <div className="row" style={{ gap: 6 }}>
+          <button
+            type="button"
+            className="btn btn-ghost small"
+            onClick={() => createTestAgentAction('2fa')}
+            title="Créer une action de test pour essayer l'interface"
+          >
+            <Zap size={13} /> Simuler action IA
+          </button>
+        </div>
+      </div>
+
+      {!dev?.devModeActive ? (
+        <div className="card card-pad dev-disabled-box">
+          <div className="row" style={{ gap: 12 }}>
+            <div className="dev-disabled-icon">
+              <Bot size={24} />
+            </div>
+            <div>
+              <b style={{ display: 'block', marginBottom: 2 }}>Le Mode Dev / Agent est actuellement désactivé</b>
+              <span className="muted small">
+                Activez l'interrupteur « Mode Dev / Agent » en haut à droite pour recevoir les alertes et les instructions pas-à-pas lorsque vos IA ont besoin d'une intervention manuelle.
+              </span>
+            </div>
+          </div>
+        </div>
+      ) : pendingActions.length === 0 ? (
+        <div className="card card-pad dev-standby-box">
+          <div className="row" style={{ gap: 14 }}>
+            <div className="dev-standby-icon">
+              <CheckCheck size={24} />
+            </div>
+            <div className="grow">
+              <b>Tous les agents sont autonomes — Aucune action manuelle requise</b>
+              <p className="muted small" style={{ margin: '4px 0 0' }}>
+                Dès qu'une IA bloque sur une tâche (2FA, captcha, achat, terminal, validation physique), elle vous transmettra ici ses instructions étape par étape.
+              </p>
+            </div>
+            <div className="row" style={{ gap: 6 }}>
+              <button
+                type="button"
+                className="btn small"
+                onClick={() => createTestAgentAction('deploy')}
+              >
+                Tester un cas DNS
+              </button>
+              <button
+                type="button"
+                className="btn small"
+                onClick={() => createTestAgentAction('payment')}
+              >
+                Tester un paiement
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="stack gap-12">
+          {pendingActions.map((action) => {
+            const totalSteps = action.steps.length;
+            const doneSteps = action.steps.filter((s) => s.done).length;
+            const allDone = totalSteps > 0 && doneSteps === totalSteps;
+
+            return (
+              <div key={action.id} className="card card-pad dev-action-card">
+                {/* En-tête de l'action */}
+                <div className="row-between" style={{ alignItems: 'flex-start', marginBottom: 12 }}>
+                  <div>
+                    <div className="row" style={{ gap: 8, marginBottom: 4 }}>
+                      <span className="dev-agent-pill">
+                        <Sparkles size={12} /> {action.agentName}
+                      </span>
+                      <span className="small faint">
+                        {new Date(action.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <h2 className="dev-action-title">{action.title}</h2>
+                  </div>
+
+                  <span className="dev-pending-badge">Action requise</span>
+                </div>
+
+                {/* Explication / Motif du blocage de l'IA */}
+                <div className="dev-reason-banner">
+                  <AlertTriangle size={15} className="dev-reason-icon" />
+                  <div className="small">
+                    <b>Pourquoi l'IA a besoin de vous :</b> {action.reason}
+                  </div>
+                </div>
+
+                {/* Checklist pas-à-pas */}
+                <div className="dev-checklist">
+                  <div className="row-between" style={{ marginBottom: 6 }}>
+                    <span className="small muted" style={{ fontWeight: 600 }}>
+                      Instructions pas à pas ({doneSteps}/{totalSteps}) :
+                    </span>
+                    <span className="small mono faint">
+                      {Math.round((doneSteps / Math.max(1, totalSteps)) * 100)}%
+                    </span>
+                  </div>
+
+                  <div className="progress" style={{ marginBottom: 12, height: 5 }}>
+                    <div style={{ width: `${(doneSteps / Math.max(1, totalSteps)) * 100}%` }} />
+                  </div>
+
+                  <div className="stack gap-8">
+                    {action.steps.map((step, idx) => (
+                      <div
+                        key={step.id}
+                        className={'dev-step-item' + (step.done ? ' done' : '')}
+                        onClick={() => toggleAgentStep(action.id, step.id)}
+                      >
+                        <button
+                          type="button"
+                          className={'check' + (step.done ? ' on' : '')}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleAgentStep(action.id, step.id);
+                          }}
+                          aria-label={`Étape ${idx + 1}`}
+                        >
+                          {step.done && <Check size={13} strokeWidth={3} />}
+                        </button>
+
+                        <div className="grow" style={{ minWidth: 0 }}>
+                          <div className={'dev-step-title' + (step.done ? ' line-through' : '')}>
+                            <span className="dev-step-num">{idx + 1}.</span> {step.title}
+                          </div>
+                          {step.details && <div className="dev-step-details">{step.details}</div>}
+                          {step.codeSnippet && (
+                            <div
+                              className="dev-code-box"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                copyToClipboard(step.codeSnippet!, 'Commande copiée !');
+                              }}
+                            >
+                              <code>{step.codeSnippet}</code>
+                              <span className="dev-code-copy" title="Copier la commande">
+                                <Copy size={12} />
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Bouton de confirmation renvoyé à l'IA */}
+                <div className="dev-action-footer row-between">
+                  <span className="small muted">
+                    {allDone
+                      ? '✓ Toutes les étapes sont validées !'
+                      : 'Cochez les étapes au fur et à mesure.'}
+                  </span>
+
+                  <button
+                    type="button"
+                    className={'btn btn-primary dev-submit-btn' + (allDone ? ' ready' : '')}
+                    onClick={() => {
+                      completeAgentAction(
+                        action.id,
+                        `Action validée par Ethan (${doneSteps}/${totalSteps} étapes terminées).`
+                      );
+                      haptic();
+                      toast(`Confirmation renvoyée à ${action.agentName} !`);
+                    }}
+                  >
+                    <Send size={15} /> Renvoyer à l'IA que l'action est terminée
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Historique des actions terminées */}
+      {completedActions.length > 0 && (
+        <div style={{ marginTop: 20 }}>
+          <button
+            type="button"
+            className="row faint small"
+            style={{ gap: 6, margin: '14px 0 8px', cursor: 'pointer' }}
+            onClick={() => setShowCompleted(!showCompleted)}
+          >
+            {showCompleted ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            Historique des actions résolues ({completedActions.length})
+          </button>
+
+          {showCompleted && (
+            <div className="list">
+              {completedActions.map((act) => (
+                <div key={act.id} className="list-item row-between">
+                  <div className="row" style={{ gap: 10 }}>
+                    <div className="dev-history-icon">
+                      <Check size={14} />
+                    </div>
+                    <div>
+                      <b style={{ fontSize: 13.5 }}>{act.title}</b>
+                      <div className="small faint">
+                        {act.agentName} · Terminé le{' '}
+                        {act.completedAt
+                          ? new Date(act.completedAt).toLocaleString([], {
+                              day: 'numeric',
+                              month: 'short',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })
+                          : 'Récemment'}
+                      </div>
+                    </div>
+                  </div>
+                  <span className="small faint">{act.steps.length} étapes</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========================================================
+          SECTION 1 : COURS D'UTILISATION DES TOKENS & QUOTAS IA
+         ======================================================== */}
+      <div className="section-title" style={{ marginTop: 36 }}>
+        <span className="row" style={{ gap: 6 }}>
+          <Coins size={15} /> Utilisation des Tokens & Quotas IA
+          <span className="count">({services.length} apps)</span>
+        </span>
+
+        <button type="button" className="btn btn-primary small" onClick={() => openNewService()}>
+          <Plus size={14} /> Ajouter une application
+        </button>
+      </div>
+
+      {/* Synthèse globale en cartes métriques */}
+      <div className="grid grid-3" style={{ marginBottom: 14 }}>
+        <div className="card card-pad">
+          <div className="row" style={{ gap: 6, color: 'var(--text-2)', fontSize: 12 }}>
+            <Cpu size={14} /> Tokens consommés (LLM)
+          </div>
+          <div className="big-num" style={{ margin: '6px 0 2px' }}>
+            {fmtInt(totalTokens)}
+          </div>
+          <div className="small faint">Tous modèles LLM confondus</div>
+        </div>
+
+        <div className="card card-pad">
+          <div className="row" style={{ gap: 6, color: 'var(--text-2)', fontSize: 12 }}>
+            <DollarSign size={14} /> Dépense mensuelle estimée
+          </div>
+          <div className="big-num" style={{ margin: '6px 0 2px' }}>
+            {totalSpend.toFixed(2)} $
+          </div>
+          <div className="small faint">
+            Budget alloué : {totalBudget > 0 ? `${totalBudget} $` : 'Non plafonné'}
+          </div>
+        </div>
+
+        <div className="card card-pad">
+          <div className="row" style={{ gap: 6, color: 'var(--text-2)', fontSize: 12 }}>
+            <Sliders size={14} /> Services connectés
+          </div>
+          <div className="big-num" style={{ margin: '6px 0 2px' }}>
+            {services.length}
+          </div>
+          <div className="small faint">
+            {services.filter((s) => s.category === 'llm').length} LLMs ·{' '}
+            {services.filter((s) => s.category === 'voice').length} Voix ·{' '}
+            {services.filter((s) => s.category === 'code').length} Code
+          </div>
+        </div>
+      </div>
+
+      {/* Grille des applications IA */}
+      <div className="grid grid-2">
+        {services.map((srv) => {
+          const hasLimit = Boolean(srv.limit && srv.limit > 0);
+          const ratio = hasLimit ? Math.min(1, srv.used / (srv.limit || 1)) : 0;
+          const pct = Math.round(ratio * 100);
+          const isNearLimit = hasLimit && pct >= 85;
+
+          const unitLabel =
+            srv.unit === 'tokens'
+              ? 'tokens'
+              : srv.unit === 'chars'
+              ? 'caractères'
+              : srv.unit === 'credits'
+              ? 'crédits'
+              : '$';
+
+          return (
+            <div key={srv.id} className="card card-pad dev-service-card">
+              <div className="row-between" style={{ marginBottom: 8 }}>
+                <div className="row" style={{ gap: 10 }}>
+                  <div
+                    className="dev-service-badge"
+                    style={{ backgroundColor: `${srv.color || '#3b82f6'}22`, color: srv.color || '#3b82f6' }}
+                  >
+                    {srv.category === 'voice' ? (
+                      <Mic size={18} />
+                    ) : srv.category === 'code' ? (
+                      <Code2 size={18} />
+                    ) : (
+                      <Brain size={18} />
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="dev-service-name">{srv.name}</h3>
+                    <div className="small faint">{srv.plan || 'Forfait standard'}</div>
+                  </div>
+                </div>
+
+                <div className="row" style={{ gap: 4 }}>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    onClick={() => openEditService(srv)}
+                    title="Modifier l'application"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Jauge d'utilisation */}
+              <div className="dev-gauge-box">
+                <div className="row-between small" style={{ marginBottom: 4 }}>
+                  <span className="mono">
+                    <b>{fmtInt(srv.used)}</b>{' '}
+                    <span className="faint">
+                      {hasLimit ? `/ ${fmtInt(srv.limit!)} ${unitLabel}` : unitLabel}
+                    </span>
+                  </span>
+                  {hasLimit && (
+                    <span className={'mono small' + (isNearLimit ? ' danger-text' : ' faint')}>
+                      {pct}%
+                    </span>
+                  )}
+                </div>
+
+                <div className="progress" style={{ height: 6 }}>
+                  <div
+                    style={{
+                      width: hasLimit ? `${pct}%` : '100%',
+                      backgroundColor: isNearLimit ? 'var(--danger)' : srv.color || 'var(--text)'
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Détails financiers & reset */}
+              <div className="row-between small" style={{ marginTop: 10 }}>
+                <div className="row" style={{ gap: 4 }}>
+                  <span className="faint">Coût :</span>
+                  <b>{srv.costUsd != null ? `${srv.costUsd.toFixed(2)} $` : 'Inclus'}</b>
+                  {srv.budgetUsd ? <span className="faint">/ {srv.budgetUsd} $</span> : null}
+                </div>
+
+                {srv.resetDate && (
+                  <span className="dev-reset-pill small faint">
+                    Reset : {srv.resetDate}
+                  </span>
+                )}
+              </div>
+
+              {srv.notes && <p className="dev-service-notes">{srv.notes}</p>}
+
+              {/* Raccourcis d'incrément rapide */}
+              <div className="dev-quick-inc row" style={{ marginTop: 12 }}>
+                <span className="small faint" style={{ marginRight: 4 }}>
+                  Ajouter :
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-ghost small dev-chip-btn"
+                  onClick={() => quickIncrement(srv.id, 1000)}
+                >
+                  +1k
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost small dev-chip-btn"
+                  onClick={() => quickIncrement(srv.id, 10000)}
+                >
+                  +10k
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost small dev-chip-btn"
+                  onClick={() => quickIncrement(srv.id, 50000)}
+                >
+                  +50k
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Modal Sheet : Ajouter ou Modifier un Service IA */}
+      <Sheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        title={editingService ? `Modifier ${editingService.name}` : 'Ajouter une application IA'}
+      >
+        <div className="stack gap-12" style={{ padding: '8px 0 16px' }}>
+          {!editingService && (
+            <div>
+              <label className="small faint" style={{ display: 'block', marginBottom: 6 }}>
+                Préréglages rapides (1 clic) :
+              </label>
+              <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
+                {PRESET_APPS.map((p) => (
+                  <button
+                    key={p.name}
+                    type="button"
+                    className="btn btn-ghost small dev-preset-pill"
+                    onClick={() => openNewService(p)}
+                  >
+                    <span className="dev-preset-dot" style={{ backgroundColor: p.color }} />
+                    {p.name.split(' ')[0]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <Field label="Nom de l'application / Fournisseur">
+            <input
+              className="input"
+              value={formName}
+              onChange={(e) => setFormName(e.target.value)}
+              placeholder="Ex: Claude (Anthropic), Google Antigravity..."
+              autoFocus
+            />
+          </Field>
+
+          <div className="grid grid-2">
+            <Field label="Catégorie">
+              <select
+                className="input"
+                value={formCategory}
+                onChange={(e) => setFormCategory(e.target.value as AiService['category'])}
+              >
+                <option value="llm">LLM / Modèle de langage</option>
+                <option value="code">Code & Agents autonomes</option>
+                <option value="voice">Audio / Synthèse vocale</option>
+                <option value="image">Génération d'images</option>
+                <option value="other">Autre outil IA</option>
+              </select>
+            </Field>
+
+            <Field label="Unité de mesure">
+              <select
+                className="input"
+                value={formUnit}
+                onChange={(e) => setFormUnit(e.target.value as AiServiceUnit)}
+              >
+                <option value="tokens">Tokens</option>
+                <option value="chars">Caractères (ElevenLabs)</option>
+                <option value="credits">Crédits</option>
+                <option value="usd">USD ($)</option>
+              </select>
+            </Field>
+          </div>
+
+          <Field label="Forfait / Plan">
+            <input
+              className="input"
+              value={formPlan}
+              onChange={(e) => setFormPlan(e.target.value)}
+              placeholder="Ex: Pro, Tier 2, Pay-as-you-go..."
+            />
+          </Field>
+
+          <div className="grid grid-2">
+            <Field label="Consommation actuelle">
+              <NumInput
+                value={formUsed}
+                onChange={setFormUsed}
+                placeholder="Ex: 642000"
+              />
+            </Field>
+
+            <Field label="Limite / Quota mensuel (optionnel)">
+              <NumInput
+                value={formLimit ?? null}
+                onChange={(n) => setFormLimit(n > 0 ? n : undefined)}
+                placeholder="Ex: 1000000"
+              />
+            </Field>
+          </div>
+
+          <div className="grid grid-2">
+            <Field label="Dépense actuelle ($)">
+              <NumInput
+                value={formCost ?? null}
+                onChange={(n) => setFormCost(n >= 0 ? n : undefined)}
+                placeholder="Ex: 14.80"
+              />
+            </Field>
+
+            <Field label="Budget max mensuel ($)">
+              <NumInput
+                value={formBudget ?? null}
+                onChange={(n) => setFormBudget(n > 0 ? n : undefined)}
+                placeholder="Ex: 30"
+              />
+            </Field>
+          </div>
+
+          <Field label="Date de réinitialisation du quota">
+            <input
+              type="date"
+              className="input"
+              value={formReset}
+              onChange={(e) => setFormReset(e.target.value)}
+            />
+          </Field>
+
+          <Field label="Notes / Modèles utilisés">
+            <textarea
+              className="input"
+              rows={2}
+              value={formNotes}
+              onChange={(e) => setFormNotes(e.target.value)}
+              placeholder="Ex: Claude 3.5 Sonnet & Haiku 3.5"
+            />
+          </Field>
+
+          <div className="row-between" style={{ marginTop: 12 }}>
+            {editingService ? (
+              <button
+                type="button"
+                className="btn btn-ghost btn-danger small"
+                onClick={() => deleteService(editingService.id, editingService.name)}
+              >
+                <Trash2 size={14} /> Supprimer
+              </button>
+            ) : <div />}
+
+            <div className="row" style={{ gap: 8 }}>
+              <button type="button" className="btn btn-ghost" onClick={() => setSheetOpen(false)}>
+                Annuler
+              </button>
+              <button type="button" className="btn btn-primary" onClick={saveService}>
+                {editingService ? 'Enregistrer les modifications' : 'Ajouter l’application'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Sheet>
+    </div>
+  );
+}

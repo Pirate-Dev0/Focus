@@ -25,6 +25,7 @@ const eurFmt = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EU
 const eurFmt2 = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 });
 export const eur = (n: number, precise = false) => (precise ? eurFmt2 : eurFmt).format(n || 0);
 export const num = (n: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 }).format(n);
+export const fmtInt = (n: number) => new Intl.NumberFormat('fr-FR').format(n || 0);
 
 export const DAYS_SHORT = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
 export const DAYS_FULL = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];

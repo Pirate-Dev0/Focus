@@ -14,8 +14,27 @@ export function migrate(raw: any): State {
   return {
     ...base,
     ...raw,
-    settings: { ...base.settings, ...(raw.settings || {}), goal: { ...base.settings.goal, ...(raw.settings?.goal || {}) } }
+    settings: { ...base.settings, ...(raw.settings || {}), goal: { ...base.settings.goal, ...(raw.settings?.goal || {}) } },
+    dev: {
+      devModeActive: raw.dev?.devModeActive ?? base.dev.devModeActive,
+      bridgePort: raw.dev?.bridgePort ?? base.dev.bridgePort,
+      services: Array.isArray(raw.dev?.services) && raw.dev.services.length > 0 ? raw.dev.services.map(cleanDemoService) : base.dev.services,
+      actions: Array.isArray(raw.dev?.actions) ? raw.dev.actions.filter((a: any) => a?.title !== DEMO_ACTION_TITLE) : base.dev.actions
+    }
   };
+}
+
+// Données de démo d'une première version de la page Dev : on les retire si elles traînent encore dans un état sauvegardé
+const DEMO_ACTION_TITLE = 'Validation manuelle 2FA / Session GitHub';
+const DEMO_USAGE: Record<string, [number, string]> = {
+  'Claude (Anthropic)': [642000, 'Pro / API Tier 2'],
+  'Google Antigravity': [1250000, 'Workspace Agentic'],
+  ElevenLabs: [48500, 'Creator Plan']
+};
+function cleanDemoService(s: any) {
+  const demo = DEMO_USAGE[s?.name];
+  if (!demo || s.used !== demo[0] || s.plan !== demo[1]) return s;
+  return { ...s, plan: '', used: 0, limit: undefined, costUsd: undefined, budgetUsd: undefined, resetDate: undefined, notes: undefined };
 }
 
 function load(): State {

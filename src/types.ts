@@ -128,6 +128,52 @@ export interface VintedItem {
 
 export type HomeSection = 'tasks' | 'habits' | 'goal' | 'upcoming' | 'overview';
 
+export type AiServiceUnit = 'tokens' | 'credits' | 'chars' | 'usd';
+
+export interface AiService {
+  id: string;
+  name: string; // Ex: Claude (Anthropic), Google Antigravity, ElevenLabs
+  category?: 'llm' | 'voice' | 'image' | 'code' | 'other';
+  icon?: string;
+  color?: string;
+  plan: string; // Ex: Pro, Pay-as-you-go, Tier 2
+  used: number;
+  limit?: number;
+  unit: AiServiceUnit;
+  costUsd?: number;
+  budgetUsd?: number;
+  resetDate?: string; // YYYY-MM-DD
+  notes?: string;
+  updatedAt: number;
+}
+
+export interface AgentStep {
+  id: string;
+  title: string;
+  details?: string;
+  codeSnippet?: string;
+  done: boolean;
+}
+
+export interface AgentAction {
+  id: string;
+  agentName: string; // Ex: Google Antigravity, Claude, Cursor
+  title: string;
+  reason: string; // Motif de l'intervention manuelle
+  steps: AgentStep[];
+  status: 'pending' | 'completed' | 'cancelled';
+  createdAt: number;
+  completedAt?: number;
+  responsePayload?: string;
+}
+
+export interface DevState {
+  devModeActive: boolean;
+  bridgePort?: number;
+  services: AiService[];
+  actions: AgentAction[];
+}
+
 export interface Settings {
   name: string;
   home?: { order: HomeSection[]; hidden: HomeSection[] };
@@ -153,4 +199,5 @@ export interface State {
   vinted: VintedItem[];
   mrrHistory: { date: string; total: number }[];
   pushSubs?: { endpoint: string; keys: { p256dh: string; auth: string }; device: string; addedAt: number }[];
+  dev: DevState;
 }

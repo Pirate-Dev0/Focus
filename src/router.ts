@@ -18,13 +18,13 @@ export function useRoute() {
   return { path, ...parsePath(path) };
 }
 
-// Les 4 onglets de la barre du bas. Réglages vit « dans » l'accueil, un projet « dans » Projets.
-export type TabName = 'home' | 'life' | 'wallet' | 'projects';
-export const TABS: TabName[] = ['home', 'life', 'wallet', 'projects'];
+// Les onglets de navigation (sidebar ordi & barre du bas mobile)
+export type TabName = 'home' | 'life' | 'wallet' | 'projects' | 'dev';
+export const TABS: TabName[] = ['home', 'life', 'wallet', 'projects', 'dev'];
 export function tabOf(path: string): TabName {
   const n = parsePath(path).name;
   if (n === 'project') return 'projects';
-  if (n === 'life' || n === 'wallet' || n === 'projects') return n;
+  if (n === 'life' || n === 'wallet' || n === 'projects' || n === 'dev') return n;
   return 'home';
 }
 // profondeur de navigation, pour savoir si on « entre » (glisse depuis la droite) ou si on « revient »
