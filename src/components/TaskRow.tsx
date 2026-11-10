@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Bell, CalendarClock, Check as CheckIcon, Clock, ExternalLink, ListChecks, Repeat, Tag } from 'lucide-react';
+import { Bell, CalendarClock, Check as CheckIcon, Clock, ExternalLink, ListChecks, Repeat, Sparkles, Tag } from 'lucide-react';
 import type { Task } from '../types';
 import { postponeTask, setTaskDone } from '../actions';
 import { daysBetween, fmtDate, fmtDuration, haptic, today } from '../utils';
@@ -28,6 +28,11 @@ export function TaskRow({ task, project, onOpen, day }: { task: Task; project?: 
   };
 
   const meta = [
+    task.source === 'claude' ? (
+      <span key="cl" className="chip chip-xs chip-claude" title="Ajoutée par Claude">
+        <Sparkles size={10} /> Claude
+      </span>
+    ) : null,
     project && project !== 'Général' ? <span key="p">{project}</span> : null,
     task.recurrence ? (
       <span key="rec" className="chip chip-xs" title="Tâche récurrente">

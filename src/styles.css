@@ -1154,3 +1154,11 @@ input[type='time'].input.hs-time { width: 112px; height: 38px; line-height: 38px
   .w-trio b { font-size: 15px; }
   .w-trio > div { padding: 9px 8px; }
 }
+
+/* Boîte de réception de Claude */
+.chip-claude { color: #c2410c; border-color: color-mix(in srgb, #ea580c 35%, transparent); background: color-mix(in srgb, #ea580c 9%, var(--bg-elev)); }
+:root[data-theme='dark'] .chip-claude { color: #fb923c; }
+.claude-head { display: flex; align-items: flex-start; gap: 12px; }
+.claude-ico { display: grid; place-items: center; flex-shrink: 0; width: 36px; height: 36px; border-radius: 11px; color: #ea580c; background: color-mix(in srgb, #ea580c 14%, var(--bg-elev)); }
+.claude-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.claude-foot .btn { flex-shrink: 0; }

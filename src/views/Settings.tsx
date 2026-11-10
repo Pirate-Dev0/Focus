@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Bell, ChevronRight, Download, Github, LogOut, Moon, Sun, Monitor, Upload, Smartphone, RefreshCw, SlidersHorizontal } from 'lucide-react';
+import { ArrowLeft, Bell, ChevronRight, Download, Github, Inbox, LogOut, Moon, Sun, Monitor, Upload, Smartphone, RefreshCw, SlidersHorizontal, Sparkles } from 'lucide-react';
 import { go } from '../router';
 import { HomeSheet } from './Dashboard';
 import { getState, migrate, setState, update, useAppState } from '../store';
 import { Field, NumInput, Segmented, toast } from '../components/ui';
-import { connect, currentEndpoint, disablePush, disconnect, enablePush, getConfig, pull, pushReady, syncInfo, testPush, useSyncStatus } from '../sync';
+import { checkInbox, connect, currentEndpoint, disablePush, disconnect, enablePush, getConfig, pull, pushReady, syncInfo, testPush, useInboxInfo, useSyncStatus } from '../sync';
 import { SyncBadge } from '../App';
 
 export default function Settings() {
@@ -18,6 +18,8 @@ export default function Settings() {
   const [token, setToken] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [homeSheet, setHomeSheet] = useState(false);
+  const inbox = useInboxInfo();
+  const [checking, setChecking] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const standalone = window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone;
   const notifOn = Boolean(endpoint && (s.pushSubs || []).some((x) => x.endpoint === endpoint));
@@ -125,6 +127,34 @@ export default function Settings() {
             {err && <p className="small" style={{ color: 'var(--danger)', marginTop: -4 }}>{err}</p>}
             <button className="btn btn-primary btn-block btn-lg" disabled={busy || !owner || !repo || !token} onClick={doConnect}>{busy ? 'Connexion…' : 'Connecter'}</button>
           </>
+        )}
+      </div>
+
+      <div className="section-title"><span>Claude</span></div>
+      <div className="card card-pad">
+        <div className="claude-head">
+          <span className="claude-ico"><Sparkles size={17} /></span>
+          <div className="grow">
+            <div style={{ fontWeight: 600 }}>Boîte de réception de Claude</div>
+            <p className="faint small" style={{ margin: '3px 0 0' }}>
+              Demande à Claude d'ajouter une tâche : il la dépose dans le dossier <code>inbox/</code> de ton repo privé, et Focus l'ajoute toute seule à la prochaine synchro, avec le badge Claude.
+              Le repo est privé : personne d'autre ne peut y déposer quoi que ce soit.
+            </p>
+          </div>
+        </div>
+        {cfg ? (
+          <div className="claude-foot">
+            <span className="small muted">
+              {inbox
+                ? `Dernier dépôt : ${inbox.count} tâche${inbox.count > 1 ? 's' : ''} · ${new Date(inbox.at).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`
+                : 'Aucune tâche reçue pour l’instant'}
+            </span>
+            <button className="btn" disabled={checking} onClick={() => { setChecking(true); checkInbox().finally(() => setChecking(false)); }}>
+              <Inbox size={14} /> {checking ? 'Relève…' : 'Relever'}
+            </button>
+          </div>
+        ) : (
+          <p className="small muted" style={{ margin: '12px 0 0' }}>Active d'abord la synchro GitHub ci-dessus : c'est elle qui sert de relais.</p>
         )}
       </div>
 

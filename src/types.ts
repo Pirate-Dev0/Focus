@@ -36,6 +36,7 @@ export interface Task {
   createdAt: number;
   doneAt?: number;
   order: number;
+  source?: 'claude'; // ajoutée par Claude via la boîte de réception (inbox/ du repo de données)
 }
 
 export interface Gauge {

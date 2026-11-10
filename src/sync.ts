@@ -2,7 +2,10 @@
 // Aucun serveur : l'app parle directement à l'API GitHub avec un token perso.
 import { useSyncExternalStore } from 'react';
 import { getState, migrate, setLocalChangeHandler, setState, update } from './store';
-import type { State } from './types';
+import type { State, Task } from './types';
+import { inboxTasks } from './inbox';
+import { toast } from './components/ui';
+import { go } from './router';
 
 export interface GhConfig { owner: string; repo: string; token: string; branch: string }
 const CFG_KEY = 'focus.github';
@@ -196,6 +199,97 @@ export async function refreshUsage() {
   if (!res.ok) throw new Error(`GitHub ${res.status}`);
 }
 
+/* ---------- Boîte de réception de Claude (inbox/*.json) ----------
+   Claude dépose un fichier par demande ; on ajoute les tâches puis on supprime le fichier. */
+export interface InboxInfo { at: number; count: number; titles: string[] }
+const INBOX_LAST = 'focus.inbox.last';
+const INBOX_SEEN = 'focus.inbox.seen';
+let inboxLast: InboxInfo | null = (() => {
+  try {
+    return JSON.parse(localStorage.getItem(INBOX_LAST) || 'null');
+  } catch {
+    return null;
+  }
+})();
+const inboxL = new Set<() => void>();
+export function useInboxInfo() {
+  return useSyncExternalStore(
+    (l) => {
+      inboxL.add(l);
+      return () => inboxL.delete(l);
+    },
+    () => inboxLast
+  );
+}
+const readSeen = (): string[] => {
+  try {
+    return JSON.parse(localStorage.getItem(INBOX_SEEN) || '[]');
+  } catch {
+    return [];
+  }
+};
+
+let inboxBusy = false;
+async function readInbox(c: GhConfig) {
+  if (inboxBusy) return;
+  inboxBusy = true;
+  try {
+    const res = await gh(c, `/contents/inbox?ref=${encodeURIComponent(c.branch)}`);
+    if (!res.ok) return; // 404 = boîte vide (le dossier disparaît quand il n'a plus de fichier)
+    const list = await res.json();
+    if (!Array.isArray(list)) return;
+    const files = (list as { name: string; path: string; sha: string; type: string }[]).filter((f) => f.type === 'file' && f.name.endsWith('.json'));
+    if (!files.length) return;
+    const seen = new Set(readSeen());
+    const added: Task[] = [];
+    for (const f of files) {
+      if (!seen.has(f.name)) {
+        try {
+          const r = await gh(c, `/contents/${f.path}?ref=${encodeURIComponent(c.branch)}`);
+          if (!r.ok) continue; // on réessaiera à la prochaine synchro
+          const j = await r.json();
+          const tasks = inboxTasks(f.name, JSON.parse(b64decode(j.content)), getState());
+          if (tasks.length) {
+            update((d) => {
+              for (const t of tasks) if (!d.tasks.some((k) => k.id === t.id)) d.tasks.push(t);
+            });
+            added.push(...tasks);
+          }
+        } catch {
+          // fichier illisible : on le retire quand même pour ne pas bloquer la boîte
+        }
+        seen.add(f.name);
+      }
+      await gh(c, `/contents/${f.path}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ message: `Focus · tâches de Claude importées (${f.name})`, sha: f.sha, branch: c.branch })
+      }).catch(() => {});
+    }
+    try {
+      localStorage.setItem(INBOX_SEEN, JSON.stringify([...seen].slice(-200)));
+    } catch {}
+    if (added.length) {
+      inboxLast = { at: Date.now(), count: added.length, titles: added.slice(0, 5).map((t) => t.title) };
+      try {
+        localStorage.setItem(INBOX_LAST, JSON.stringify(inboxLast));
+      } catch {}
+      inboxL.forEach((l) => l());
+      const pid = added[0].projectId;
+      toast(added.length === 1 ? `Claude a ajouté « ${added[0].title} »` : `Claude a ajouté ${added.length} tâches`, { label: 'Voir', run: () => go('project/' + pid) });
+    }
+  } catch {
+    // hors ligne ou GitHub indisponible : rien de grave, on réessaie à la prochaine synchro
+  } finally {
+    inboxBusy = false;
+  }
+}
+
+/** Relève la boîte de réception tout de suite (bouton des Réglages) */
+export async function checkInbox() {
+  const c = getConfig();
+  if (c) await readInbox(c);
+}
+
 /* ---------- boucle de synchro ---------- */
 let queue: Promise<void> = Promise.resolve();
 const serial = (fn: () => Promise<void>) => (queue = queue.then(fn, fn));
@@ -245,6 +339,7 @@ export function pull() {
       setStatus(navigator.onLine ? 'error' : 'offline', e.message);
     }
     void readUsage(c);
+    if (status === 'synced') await readInbox(c);
   });
 }
 
