@@ -1,9 +1,32 @@
-import { useMemo, useState } from 'react';
-import { ChevronRight, Dumbbell, Play, Plus, Trash2, Trophy, X, Scale } from 'lucide-react';
+import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { ChevronRight, Dumbbell, Play, Plus, Trash2, Trophy, X, Scale, Flame, Timer, TrendingUp, TrendingDown, Zap, type LucideIcon } from 'lucide-react';
 import { getState, update, useAppState } from '../store';
 import { Empty, Field, NumInput, Segmented, Sheet, Sparkline, toast } from '../components/ui';
 import type { State, Workout } from '../types';
-import { daysBetween, est1RM, fmtDate, haptic, num, today, uid } from '../utils';
+import { addDays, DAYS_SHORT, daysBetween, est1RM, fmtDate, haptic, num, parseDate, today, uid } from '../utils';
+
+/* ---------- Couleurs (mêmes teintes que Habitudes / Portefeuille) ---------- */
+const PALETTE = ['#3b82f6', '#c026d3', '#14b8a6', '#f97316', '#ec4899', '#22c55e', '#6366f1', '#ef4444'];
+const colorOf = (key: string) => {
+  let h = 0;
+  for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return PALETTE[h % PALETTE.length];
+};
+const GROUP_COLORS: Record<string, string> = {
+  Pecs: '#ef4444', Dos: '#3b82f6', Épaules: '#f97316', Biceps: '#c026d3', Triceps: '#ec4899',
+  Jambes: '#22c55e', Abdos: '#14b8a6', Cardio: '#0ea5e9', Autre: '#8b8b94'
+};
+const groupColor = (g: string) => GROUP_COLORS[g] || '#8b8b94';
+const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0]; // lundi → dimanche
+
+/** Pastille carrée teintée : icône ou initiale (même rendu que le Portefeuille) */
+function Tile({ Icon, color, children }: { Icon?: LucideIcon; color: string; children?: ReactNode }) {
+  return (
+    <span className="w-tile" style={{ '--c': color } as CSSProperties} aria-hidden="true">
+      {Icon ? <Icon size={18} strokeWidth={2.1} /> : children}
+    </span>
+  );
+}
 
 function lastSetsFor(s: State, exerciseId: string, excludeId?: string) {
   const ws = s.workouts
@@ -46,6 +69,18 @@ export default function Gym() {
   const weekCount = finished.filter((w) => daysBetween(w.date, t) < 7).length;
   const weight = s.bodyWeights[s.bodyWeights.length - 1];
   const firstWeight = s.bodyWeights[0];
+  const wDiff = weight && firstWeight ? weight.kg - firstWeight.kg : 0;
+
+  // semaine en cours (lundi → dimanche) : jours où une séance a été faite
+  const dow = (parseDate(t).getDay() + 6) % 7;
+  const week = Array.from({ length: 7 }, (_, i) => addDays(t, i - dow));
+  const doneDays = new Set(finished.map((w) => w.date));
+  const weekTrained = week.filter((d) => doneDays.has(d)).length;
+
+  const routineColor = (id?: string) => (id ? colorOf(id) : '#8b8b94');
+  const activeColor = routineColor(active?.routineId);
+  const activeSets = active ? active.entries.reduce((a, e) => a + e.sets.length, 0) : 0;
+  const activeMin = active ? Math.max(0, Math.round((Date.now() - active.startedAt) / 60000)) : 0;
 
   const start = (routineId?: string) => {
     if (active) return setOpenWorkout(active.id);
@@ -73,47 +108,102 @@ export default function Gym() {
 
   return (
     <>
-      <div className="grid grid-2" style={{ marginBottom: 12 }}>
-        <div className="card stat">
-          <div className="k">Séances</div>
-          <div className="v">{weekCount}<span className="faint" style={{ fontSize: 14, fontWeight: 500 }}> cette sem.</span></div>
-          <div className="s">{monthCount} ce mois · {finished.length} au total</div>
-        </div>
-        <button className="card card-click stat" onClick={() => setWeightSheet(true)}>
-          <div className="row-between"><div className="k">Poids de corps</div><Scale size={13} className="faint" /></div>
-          <div className="row-between" style={{ alignItems: 'flex-end' }}>
-            <div className="v">{weight ? num(weight.kg) : '—'}<span className="faint" style={{ fontSize: 14, fontWeight: 500 }}> kg</span></div>
-            <span className="faint"><Sparkline data={s.bodyWeights.slice(-20).map((b) => b.kg)} width={64} height={26} /></span>
+      {/* ---------- En-tête : stats + semaine ---------- */}
+      <div className="hb-head card gy-head">
+        <div className="hb-title">Ma salle</div>
+        <div className="hb-sub">Charges pré-remplies, progression suivie.</div>
+        <div className="hb-stats">
+          <div>
+            <div className="hb-num" style={{ color: '#3b82f6' }}>{weekCount}</div>
+            <div className="hb-lbl">Cette semaine</div>
           </div>
-          <div className="s">{weight && firstWeight && weight !== firstWeight ? `${weight.kg - firstWeight.kg >= 0 ? '+' : ''}${num(weight.kg - firstWeight.kg)} kg depuis le début` : 'Touche pour noter'}</div>
-        </button>
+          <div>
+            <div className="hb-num" style={{ color: '#22c55e' }}>{monthCount}</div>
+            <div className="hb-lbl">Ce mois</div>
+          </div>
+          <div>
+            <div className="hb-num" style={{ color: '#c026d3' }}>{finished.length}</div>
+            <div className="hb-lbl">Au total</div>
+          </div>
+        </div>
+        <div className="gy-week" aria-label={`${weekTrained} jour${weekTrained > 1 ? 's' : ''} d'entraînement cette semaine`}>
+          {week.map((d, i) => {
+            const on = doneDays.has(d);
+            return (
+              <div key={d} className={'gy-wd' + (on ? ' on' : '') + (d === t ? ' today' : '') + (d > t ? ' future' : '')}>
+                <span className="gy-wd-dot">{on ? <Dumbbell size={12} strokeWidth={2.6} /> : null}</span>
+                <span className="gy-wd-l">{DAYS_SHORT[WEEK_ORDER[i]]}</span>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
-      {active ? (
-        <button className="hero card-click" style={{ padding: 16, marginBottom: 12 }} onClick={() => setOpenWorkout(active.id)}>
-          <div className="row-between">
-            <div>
-              <div className="label">SÉANCE EN COURS</div>
-              <div style={{ fontSize: 18, fontWeight: 600, marginTop: 2 }}>{active.name}</div>
-              <div style={{ fontSize: 12.5, opacity: 0.6 }}>{active.entries.length} exercices · commencée il y a {Math.round((Date.now() - active.startedAt) / 60000)} min</div>
-            </div>
-            <ChevronRight />
+      {/* ---------- Poids de corps ---------- */}
+      <button className="card card-click gy-weight" onClick={() => setWeightSheet(true)}>
+        <Tile Icon={Scale} color="#14b8a6" />
+        <div className="grow w-row-main">
+          <div className="w-row-sub">Poids de corps</div>
+          <div className="gy-weight-v">
+            {weight ? num(weight.kg) : '—'}<small> kg</small>
+            {weight && firstWeight && weight !== firstWeight && (
+              <span className="w-delta">
+                {wDiff >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+                {wDiff >= 0 ? '+' : '−'}{num(Math.abs(wDiff))} kg
+              </span>
+            )}
           </div>
+          {!weight && <div className="w-row-sub">Touche pour noter</div>}
+        </div>
+        {s.bodyWeights.length >= 2 && <span className="gy-weight-spark"><Sparkline data={s.bodyWeights.slice(-20).map((b) => b.kg)} width={72} height={30} /></span>}
+        <ChevronRight size={17} className="faint" />
+      </button>
+
+      {/* ---------- Séance en cours / démarrer ---------- */}
+      {active ? (
+        <button className="gy-live" style={{ '--c': activeColor } as CSSProperties} onClick={() => setOpenWorkout(active.id)}>
+          <div className="gy-live-top">
+            <span className="gy-live-badge"><i /> Séance en cours</span>
+            <span className="gy-live-time"><Timer size={13} /> {activeMin} min</span>
+          </div>
+          <div className="gy-live-name ellipsis">{active.name}</div>
+          <div className="gy-live-meta">
+            <span><Dumbbell size={13} /> {active.entries.length} exercice{active.entries.length > 1 ? 's' : ''}</span>
+            <span><Zap size={13} /> {activeSets} série{activeSets > 1 ? 's' : ''}</span>
+          </div>
+          <span className="gy-live-cta"><Play size={14} fill="currentColor" /> Reprendre la séance</span>
         </button>
       ) : (
-        <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(72px, 1fr))', gap: 8, marginBottom: 12 }}>
-          {s.routines.map((r) => (
-            <button key={r.id} className="btn btn-lg" style={{ height: 52, flexDirection: 'column', gap: 0, minWidth: 0, padding: '0 6px' }} onClick={() => start(r.id)}>
-              <span className="row" style={{ gap: 5 }}><Play size={12} fill="currentColor" /> {r.name}</span>
-              <span className="faint" style={{ fontSize: 10.5, fontWeight: 500 }}>{r.exerciseIds.length} exos</span>
+        <>
+          <div className="section-title"><span>Démarrer une séance</span><span className="faint">charges pré-remplies</span></div>
+          <div className="list">
+            {s.routines.map((r) => {
+              const c = routineColor(r.id);
+              return (
+                <button key={r.id} className="list-item w-row" onClick={() => start(r.id)}>
+                  <Tile Icon={Dumbbell} color={c} />
+                  <div className="grow w-row-main">
+                    <div className="w-row-name ellipsis">{r.name}</div>
+                    <div className="w-row-sub ellipsis">{r.exerciseIds.length} exercice{r.exerciseIds.length > 1 ? 's' : ''}{r.exerciseIds.length ? ' · ' + r.exerciseIds.map(exName).join(' · ') : ''}</div>
+                  </div>
+                  <span className="gy-play" style={{ '--c': c } as CSSProperties}><Play size={14} fill="currentColor" /></span>
+                </button>
+              );
+            })}
+            <button className="list-item w-row" onClick={() => start()}>
+              <Tile Icon={Plus} color="#8b8b94" />
+              <div className="grow w-row-main">
+                <div className="w-row-name">Séance libre</div>
+                <div className="w-row-sub">Ajoute tes exercices au fur et à mesure</div>
+              </div>
+              <span className="gy-play" style={{ '--c': '#8b8b94' } as CSSProperties}><Play size={14} fill="currentColor" /></span>
             </button>
-          ))}
-          <button className="btn btn-lg" style={{ height: 52, minWidth: 0, padding: '0 6px' }} onClick={() => start()}><Plus size={15} /> Libre</button>
-        </div>
+          </div>
+        </>
       )}
 
-      <div style={{ margin: '18px 0 12px' }}>
-        <Segmented value={tab} onChange={setTab} options={[{ value: 'historique', label: 'Historique' }, { value: 'progression', label: 'Progression' }, { value: 'programmes', label: 'Programmes' }]} />
+      <div className="gy-tabs">
+        <Segmented full value={tab} onChange={setTab} options={[{ value: 'historique', label: 'Historique' }, { value: 'progression', label: 'Progression' }, { value: 'programmes', label: 'Programmes' }]} />
       </div>
 
       {tab === 'historique' && (
@@ -122,14 +212,18 @@ export default function Gym() {
           {finished.slice(0, 40).map((w) => {
             const vol = w.entries.reduce((a, e) => a + e.sets.reduce((b, x) => b + x.w * x.r, 0), 0);
             const sets = w.entries.reduce((a, e) => a + e.sets.length, 0);
+            const min = w.finishedAt ? Math.max(1, Math.round((w.finishedAt - w.startedAt) / 60000)) : 0;
             return (
-              <button key={w.id} className="list-item" onClick={() => setOpenWorkout(w.id)}>
-                <div className="check square" style={{ border: 0, background: 'var(--bg-sunk)' }}><Dumbbell size={12} /></div>
-                <div className="grow">
-                  <div style={{ fontWeight: 500 }}>{w.name}</div>
-                  <div className="faint small">{w.entries.length} exos · {sets} séries · {num(vol / 1000)} t soulevées{w.finishedAt ? ` · ${Math.max(1, Math.round((w.finishedAt - w.startedAt) / 60000))} min` : ''}</div>
+              <button key={w.id} className="list-item w-row" onClick={() => setOpenWorkout(w.id)}>
+                <Tile Icon={Dumbbell} color={routineColor(w.routineId)} />
+                <div className="grow w-row-main">
+                  <div className="w-row-name ellipsis">{w.name}</div>
+                  <div className="w-row-sub ellipsis">{w.entries.length} exos · {sets} séries{min ? ` · ${min} min` : ''}</div>
                 </div>
-                <span className="faint small">{fmtDate(w.date)}</span>
+                <div className="w-row-end">
+                  <span className="w-amt">{num(vol / 1000)} t</span>
+                  <span className="w-amt-sub">{fmtDate(w.date)}</span>
+                </div>
               </button>
             );
           })}
@@ -141,17 +235,24 @@ export default function Gym() {
       {tab === 'programmes' && (
         <>
           <div className="list">
+            {s.routines.length === 0 && <div className="list-empty">Crée ton premier programme : tes séances démarreront en un geste.</div>}
             {s.routines.map((r) => (
-              <button key={r.id} className="list-item" onClick={() => setOpenRoutine(r.id)}>
-                <div className="grow">
-                  <div style={{ fontWeight: 500 }}>{r.name}</div>
-                  <div className="faint small ellipsis">{r.exerciseIds.map(exName).join(' · ') || 'Aucun exercice'}</div>
+              <button key={r.id} className="list-item w-row" onClick={() => setOpenRoutine(r.id)}>
+                <Tile color={routineColor(r.id)}>{r.name.trim().charAt(0).toUpperCase() || '?'}</Tile>
+                <div className="grow w-row-main">
+                  <div className="w-row-name ellipsis">{r.name}</div>
+                  <div className="w-row-sub ellipsis">{r.exerciseIds.map(exName).join(' · ') || 'Aucun exercice'}</div>
                 </div>
+                <span className="gy-count">{r.exerciseIds.length}<small> exos</small></span>
                 <ChevronRight size={16} className="faint" />
               </button>
             ))}
           </div>
-          <button className="btn btn-block" style={{ marginTop: 12 }} onClick={() => { const nid = uid(); update((d) => { d.routines.push({ id: nid, name: 'Nouveau programme', exerciseIds: [] }); }); setOpenRoutine(nid); }}><Plus size={15} /> Nouveau programme</button>
+          <button className="hb-new card gy-new" onClick={() => { const nid = uid(); update((d) => { d.routines.push({ id: nid, name: 'Nouveau programme', exerciseIds: [] }); }); setOpenRoutine(nid); }}>
+            <span className="hb-new-ic"><Plus size={14} strokeWidth={2.8} /></span>
+            <span className="grow">Nouveau programme</span>
+            <ChevronRight size={17} color="var(--text-3)" />
+          </button>
         </>
       )}
 
@@ -180,16 +281,19 @@ function Progression({ onOpen }: { onOpen: (id: string) => void }) {
         const last = h[h.length - 1];
         const first = h[0];
         const diff = last.top - first.top;
+        const c = groupColor(e.group);
+        const isPR = h.length > 1 && last.top >= Math.max(...h.map((x) => x.top)) && diff > 0;
         return (
-          <button key={e.id} className="list-item" onClick={() => onOpen(e.id)}>
-            <div className="grow">
-              <div style={{ fontWeight: 500 }} className="ellipsis">{e.name}</div>
-              <div className="faint small">{e.group} · {h.length} séance{h.length > 1 ? 's' : ''}</div>
+          <button key={e.id} className="list-item w-row" onClick={() => onOpen(e.id)}>
+            <Tile color={c}>{e.group.charAt(0).toUpperCase()}</Tile>
+            <div className="grow w-row-main">
+              <div className="w-row-name ellipsis">{e.name}</div>
+              <div className="w-row-sub ellipsis">{e.group} · {h.length} séance{h.length > 1 ? 's' : ''}{isPR ? <> · <Flame size={11} color="#f97316" style={{ verticalAlign: -1 }} /> record</> : null}</div>
             </div>
-            <span className="faint"><Sparkline data={h.slice(-12).map((x) => x.top)} width={56} height={22} fill={false} /></span>
-            <div style={{ textAlign: 'right', minWidth: 62 }}>
-              <div className="mono" style={{ fontWeight: 600 }}>{num(last.top)} kg</div>
-              <div className="faint small mono">{diff >= 0 ? '+' : ''}{num(diff)} kg</div>
+            <span className="gy-spark" style={{ color: c }}><Sparkline data={h.slice(-12).map((x) => x.top)} width={52} height={22} fill={false} /></span>
+            <div className="w-row-end" style={{ minWidth: 58 }}>
+              <span className="w-amt">{num(last.top)} kg</span>
+              <span className={'w-amt-sub' + (diff > 0 ? ' w-pos' : diff < 0 ? ' w-neg' : '')}>{diff > 0 ? '+' : diff < 0 ? '−' : '±'}{num(Math.abs(diff))} kg</span>
             </div>
           </button>
         );
