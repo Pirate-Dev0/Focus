@@ -26,7 +26,7 @@ import { useBridgeStatus, toggleAgentStep, completeAgentAction, toggleDevMode, c
 import type { AgentAction, AiService, AiServiceUnit } from '../types';
 import { uid, haptic, fmtInt } from '../utils';
 import { Sheet, Field, NumInput, toast } from '../components/ui';
-import { refreshUsage, useLiveUsage, type LiveService } from '../sync';
+import { isConnected, refreshUsage, useLiveUsage, type LiveService } from '../sync';
 
 const PRESET_APPS: { name: string; category: AiService['category']; unit: AiServiceUnit; icon: string; color: string; plan: string; defaultLimit: number }[] = [
   { name: 'Claude (Anthropic)', category: 'llm', unit: 'tokens', icon: 'brain', color: '#d97706', plan: 'Pro / Tier 2', defaultLimit: 1000000 },
@@ -38,6 +38,28 @@ const PRESET_APPS: { name: string; category: AiService['category']; unit: AiServ
   { name: 'Groq (Llama / Mixtral)', category: 'llm', unit: 'tokens', icon: 'cpu', color: '#f97316', plan: 'Developer Tier', defaultLimit: 5000000 },
   { name: 'Mistral AI', category: 'llm', unit: 'tokens', icon: 'brain', color: '#ec4899', plan: 'Le Plateforme', defaultLimit: 1000000 }
 ];
+
+// Deux façons pour une IA de demander une intervention : la boîte de réception (partout) et le pont local (Mac)
+const INBOX_EXAMPLE = `inbox/2fa-github.json
+{
+  "actions": [{
+    "agentName": "Claude",
+    "title": "Validation 2FA requise",
+    "reason": "Connexion GitHub nécessaire pour publier",
+    "steps": [
+      "Ouvrir la session GitHub",
+      { "title": "Lancer la commande", "codeSnippet": "gh auth login" }
+    ]
+  }]
+}`;
+const BRIDGE_EXAMPLE = `curl -X POST http://localhost:3001/api/agent/action \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "agentName": "Google Antigravity",
+    "title": "Validation 2FA requise",
+    "reason": "Authentification nécessaire pour publier le build",
+    "steps": ["Ouvrir la session GitHub", "Approuver sur le téléphone"]
+  }'`;
 
 const ago = (t?: number) => {
   if (!t) return 'jamais';
@@ -252,8 +274,8 @@ export default function Dev() {
         </div>
         <div className="dev-hero-foot">
           <span className="dev-bridge-chip">
-            <i className={'status-dot' + (bridgeOnline ? ' online' : ' offline')} />
-            {bridgeOnline ? 'Pont connecté' : isLocalHost() ? 'Pont arrêté' : 'Pont : Mac uniquement'}
+            <i className={'status-dot' + (bridgeOnline || (!isLocalHost() && isConnected()) ? ' online' : ' offline')} />
+            {bridgeOnline ? 'Pont connecté' : isLocalHost() ? 'Pont arrêté' : isConnected() ? 'Via la boîte de réception' : 'Synchro GitHub requise'}
           </span>
           <button type="button" className="dev-link-chip" onClick={() => setShowBridgeDocs(!showBridgeDocs)} aria-expanded={showBridgeDocs}>
             <Code2 size={13} /> {showBridgeDocs ? 'Masquer' : 'Connecter une IA'}
@@ -266,39 +288,31 @@ export default function Dev() {
         <div className="card card-pad dev-docs-card">
           <div className="row-between" style={{ marginBottom: 8 }}>
             <b className="dev-docs-title">Connecter une IA</b>
-            <button
-              type="button"
-              className="dev-ghost-chip"
-              onClick={() =>
-                copyToClipboard(
-                  `curl -X POST http://localhost:3001/api/agent/action \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "agentName": "Google Antigravity",\n    "title": "Validation 2FA requise",\n    "reason": "Authentification nécessaire pour publier le build",\n    "steps": [\n      "Ouvrir la session GitHub",\n      "Approuver la notification sur votre téléphone",\n      "Exécuter l autorisation dans le terminal"\n    ]\n  }'`,
-                  'Exemple cURL copié !'
-                )
-              }
-            >
+            <button type="button" className="dev-ghost-chip" onClick={() => copyToClipboard(INBOX_EXAMPLE, 'Exemple copié !')}>
               <Copy size={13} /> Copier
             </button>
           </div>
           <p className="small muted" style={{ margin: '0 0 10px', lineHeight: 1.5 }}>
-            Sur le Mac, lance <code className="dev-code">npm run bridge</code>. Ensuite n'importe quelle IA (Antigravity, Claude, un script…) peut t'envoyer une mission pas à pas avec un simple <code className="dev-code">POST</code> :
+            <b>Partout, iPhone compris :</b> l'IA dépose un fichier <code className="dev-code">.json</code> dans le dossier <code className="dev-code">inbox/</code> de ton repo privé de données. Focus l'affiche ici à la prochaine synchro (environ 1 min), sur tous tes appareils.
           </p>
-          <pre className="dev-pre">
-{`curl -X POST http://localhost:3001/api/agent/action \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "agentName": "Google Antigravity",
-    "title": "Validation 2FA requise",
-    "reason": "Authentification nécessaire pour publier le build",
-    "steps": [
-      "Ouvrir la session GitHub",
-      "Approuver la notification sur votre téléphone",
-      "Exécuter l autorisation dans le terminal"
-    ]
-  }'`}
-          </pre>
+          <pre className="dev-pre">{INBOX_EXAMPLE}</pre>
           <div className="small faint" style={{ marginTop: 8 }}>
-            💡 Ajoute <code className="dev-code">?wait=true</code> à l'URL : l'IA attend alors que tu valides l'action dans Focus.
+            Quand tu valides, la réponse est enregistrée dans <code className="dev-code">data.json</code> (<code className="dev-code">dev.actions</code>) : l'IA peut la relire.
           </div>
+          {isLocalHost() && (
+            <>
+              <p className="small muted" style={{ margin: '14px 0 10px', lineHeight: 1.5 }}>
+                <b>En direct sur le Mac :</b> lance <code className="dev-code">npm run bridge</code>, puis un simple <code className="dev-code">POST</code> fait apparaître l'action tout de suite (sur le Mac uniquement) :
+              </p>
+              <pre className="dev-pre">{BRIDGE_EXAMPLE}</pre>
+              <div className="row-between small faint" style={{ marginTop: 8, gap: 8 }}>
+                <span>💡 Ajoute <code className="dev-code">?wait=true</code> à l'URL : l'IA attend que tu valides.</span>
+                <button type="button" className="dev-ghost-chip" onClick={() => copyToClipboard(BRIDGE_EXAMPLE, 'Exemple cURL copié !')}>
+                  <Copy size={13} /> Copier
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
 

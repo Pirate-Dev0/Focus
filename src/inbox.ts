@@ -1,8 +1,8 @@
-// Boîte de réception de Claude.
-// Claude dépose des fichiers inbox/*.json dans le repo PRIVÉ de données (focus-data) ;
-// à chaque synchro, l'app les lit, ajoute les tâches, puis supprime le fichier.
-// Claude n'écrit jamais dans data.json : l'app reste la seule à le modifier.
-import type { ChecklistItem, Priority, State, Task } from './types';
+// Boîte de réception de Claude (et des autres IA).
+// Une IA dépose des fichiers inbox/*.json dans le repo PRIVÉ de données (focus-data) ;
+// à chaque synchro, l'app les lit, ajoute les tâches et les actions requises, puis supprime le fichier.
+// Une IA n'écrit jamais dans data.json : l'app reste la seule à le modifier.
+import type { AgentAction, AgentStep, ChecklistItem, Priority, State, Task } from './types';
 
 const PRIO: Record<string, Priority> = {
   p0: 'p0', p1: 'p1', p2: 'p2', p3: 'p3', none: 'none',
@@ -75,6 +75,50 @@ export function inboxTasks(fileName: string, raw: unknown, s: State, now = Date.
     if (tags.length) task.tags = tags;
     if (/^https?:\/\/\S+$/.test(url)) task.url = url;
     out.push(task);
+  });
+  return out;
+}
+
+/**
+ * Actions requises (page Dev) contenues dans un fichier de la boîte : { "actions": [...] } ou { "action": {...} }.
+ * Chaque action : title (obligatoire), agentName, reason, steps (textes simples ou { title, details, codeSnippet }).
+ * C'est ce qui permet à une IA de demander une intervention depuis n'importe où, et de la voir arriver sur l'iPhone
+ * (le pont local, lui, ne marche que sur le Mac). La réponse se lit ensuite dans data.json → dev.actions.
+ */
+export function inboxActions(fileName: string, raw: unknown, s: State, now = Date.now()): AgentAction[] {
+  const obj = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : null;
+  if (!obj) return [];
+  const list: unknown[] = Array.isArray(obj.actions) ? obj.actions : obj.action && typeof obj.action === 'object' ? [obj.action] : [];
+  const out: AgentAction[] = [];
+
+  list.slice(0, 20).forEach((x, i) => {
+    if (!x || typeof x !== 'object') return;
+    const a = x as Record<string, unknown>;
+    const title = str(a.title, 200);
+    if (!title) return;
+    const id = 'ca' + hash(fileName) + i.toString(36);
+    if (s.dev.actions.some((k) => k.id === id)) return;
+    const steps: AgentStep[] = [];
+    (Array.isArray(a.steps) ? a.steps : []).slice(0, 30).forEach((st, j) => {
+      const o = st && typeof st === 'object' ? (st as Record<string, unknown>) : null;
+      const stepTitle = typeof st === 'string' ? str(st, 300) : o ? str(o.title, 300) : '';
+      if (!stepTitle) return;
+      const step: AgentStep = { id: id + 's' + j, title: stepTitle, done: false };
+      const details = o ? str(o.details, 1000) : '';
+      const code = o ? str(o.codeSnippet, 2000) : '';
+      if (details) step.details = details;
+      if (code) step.codeSnippet = code;
+      steps.push(step);
+    });
+    out.push({
+      id,
+      agentName: str(a.agentName, 60) || 'Claude',
+      title,
+      reason: str(a.reason, 1000) || "L'IA a besoin de toi pour continuer.",
+      steps,
+      status: 'pending',
+      createdAt: now + i
+    });
   });
   return out;
 }

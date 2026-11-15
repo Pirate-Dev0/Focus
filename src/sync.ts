@@ -2,8 +2,8 @@
 // Aucun serveur : l'app parle directement à l'API GitHub avec un token perso.
 import { useSyncExternalStore } from 'react';
 import { getState, migrate, setLocalChangeHandler, setState, update } from './store';
-import type { State, Task } from './types';
-import { inboxTasks } from './inbox';
+import type { AgentAction, State, Task } from './types';
+import { inboxActions, inboxTasks } from './inbox';
 import { toast } from './components/ui';
 import { go } from './router';
 
@@ -242,13 +242,24 @@ async function readInbox(c: GhConfig) {
     if (!files.length) return;
     const seen = new Set(readSeen());
     const added: Task[] = [];
+    const asked: AgentAction[] = [];
     for (const f of files) {
       if (!seen.has(f.name)) {
         try {
           const r = await gh(c, `/contents/${f.path}?ref=${encodeURIComponent(c.branch)}`);
           if (!r.ok) continue; // on réessaiera à la prochaine synchro
           const j = await r.json();
-          const tasks = inboxTasks(f.name, JSON.parse(b64decode(j.content)), getState());
+          const content = JSON.parse(b64decode(j.content));
+          // actions requises (page Dev) : elles arrivent ici pour être visibles sur l'iPhone aussi
+          const actions = inboxActions(f.name, content, getState());
+          if (actions.length) {
+            update((d) => {
+              for (const a of actions) if (!d.dev.actions.some((k) => k.id === a.id)) d.dev.actions.unshift(a);
+              d.dev.devModeActive = true; // sinon l'action resterait cachée derrière « Mode Agent en pause »
+            });
+            asked.push(...actions);
+          }
+          const tasks = inboxTasks(f.name, content, getState());
           if (tasks.length) {
             update((d) => {
               for (const t of tasks) if (!d.tasks.some((k) => k.id === t.id)) d.tasks.push(t);
@@ -262,7 +273,7 @@ async function readInbox(c: GhConfig) {
       }
       await gh(c, `/contents/${f.path}`, {
         method: 'DELETE',
-        body: JSON.stringify({ message: `Focus · tâches de Claude importées (${f.name})`, sha: f.sha, branch: c.branch })
+        body: JSON.stringify({ message: `Focus · boîte de réception importée (${f.name})`, sha: f.sha, branch: c.branch })
       }).catch(() => {});
     }
     try {
@@ -276,6 +287,9 @@ async function readInbox(c: GhConfig) {
       inboxL.forEach((l) => l());
       const pid = added[0].projectId;
       toast(added.length === 1 ? `Claude a ajouté « ${added[0].title} »` : `Claude a ajouté ${added.length} tâches`, { label: 'Voir', run: () => go('project/' + pid) });
+    }
+    if (asked.length) {
+      toast(asked.length === 1 ? `${asked[0].agentName} a besoin de toi : ${asked[0].title}` : `${asked.length} actions requises par tes IA`, { label: 'Voir', run: () => go('dev') });
     }
   } catch {
     // hors ligne ou GitHub indisponible : rien de grave, on réessaie à la prochaine synchro
