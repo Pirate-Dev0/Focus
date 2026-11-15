@@ -5,6 +5,7 @@ import { useAppState } from './store';
 import { useRoute, go, parsePath, tabOf, depthOf, TABS, type TabName } from './router';
 import { startSync, useSyncStatus } from './sync';
 import { startBridgeListener } from './devBridge';
+import { startTypingGuard } from './typingGuard';
 import { primeKeyboard, Toaster } from './components/ui';
 import { QuickAdd } from './components/QuickAdd';
 import { openTasksFor, today } from './utils';
@@ -110,7 +111,8 @@ export default function App() {
   useEffect(() => {
     startSync();
     const stopBridge = startBridgeListener();
-    return () => stopBridge();
+    const stopGuard = startTypingGuard();
+    return () => { stopBridge(); stopGuard(); };
   }, []);
 
   const tapTab = (t: TabName) => {

@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, type CSSProperties } from 'react';
+import { flushSync } from 'react-dom';
 import { ArrowRight, ArrowUpRight, ChevronDown, ChevronUp, Clock, Dumbbell, Eye, EyeOff, Flame, FolderKanban, Plus, Settings, SlidersHorizontal, Snowflake, Wallet, Zap } from 'lucide-react';
 import { update, useAppState } from '../store';
 import { go } from '../router';
@@ -217,10 +218,17 @@ function InlineAdd({ day }: { day: string }) {
   const ref = useRef<HTMLInputElement>(null);
   const submit = () => {
     if (!v.trim()) return;
-    addTaskFromText(v, { due: day });
+    // la nouvelle tâche s'insère au-dessus du champ : on fait suivre la page pour que le champ
+    // reste au même endroit à l'écran (sinon, au bout de 2-3 ajouts, il passe sous le clavier)
+    const before = ref.current?.getBoundingClientRect().top;
+    flushSync(() => {
+      addTaskFromText(v, { due: day });
+      setV('');
+    });
     haptic();
-    setV('');
-    ref.current?.focus();
+    const after = ref.current?.getBoundingClientRect().top;
+    if (before != null && after != null && after !== before) window.scrollBy(0, after - before);
+    ref.current?.focus({ preventScroll: true });
   };
   return (
     <form className="inline-add" onSubmit={(e) => { e.preventDefault(); submit(); }}>
